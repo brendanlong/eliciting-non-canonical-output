@@ -99,6 +99,7 @@ def main() -> None:
         gpu_memory_utilization=args.gpu_memory_utilization,
         seed=args.seed,
         enable_prefix_caching=True,
+        disable_log_stats=False,  # periodic "Avg generation throughput / Running / KV usage" lines in the log
     )
     logprobs_mode = getattr(getattr(llm.llm_engine, "model_config", None), "logprobs_mode", "raw_logprobs (vllm default)")
 
