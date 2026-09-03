@@ -1,0 +1,19 @@
+{
+  "source": "open-r1/DAPO-Math-17k-Processed (config en, split train)",
+  "total_rows": 14116,
+  "prefix_chars": 80,
+  "training_prompts": {
+    "Dolci-RL-Zero-Math-7B": 13314,
+    "Dolci-Think-RL-7B": 102014
+  },
+  "matched": {
+    "Dolci-RL-Zero-Math-7B:exact": 9886,
+    "Dolci-Think-RL-7B:exact": 52,
+    "Dolci-Think-RL-7B:prefix": 35,
+    "Dolci-RL-Zero-Math-7B:prefix": 154
+  },
+  "duplicates_within_dapo": 735,
+  "non_integer_answer": 0,
+  "distinct_dapo_problems_sharing_a_prefix": 1203,
+  "kept": 3254
+}

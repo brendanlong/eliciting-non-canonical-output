@@ -172,8 +172,11 @@ truncated rollouts are reported as their own category.
   rate on the same prompt across checkpoints, which depends on how well
   rollouts can be length-matched. All of the following are recorded and
   probably all reported; the per-token rate is the best single number:
-  - per-token non-canonical rate, counted from a minimal diff between
-    the emitted sequence and the canonical re-encoding;
+  - per-token non-canonical rate: canonical tokens inside non-canonical
+    spans divided by canonical tokens, from a minimal diff between the
+    emitted sequence and its canonical re-encoding, so that numerator and
+    denominator count the same thing (the emitted-token count inside
+    spans is reported alongside);
   - length-matched rate on the same prompt across checkpoints;
   - sequence-level rate at a stated fixed length (familiar, free);
   - expected non-canonical probability mass from top-k logprobs at each
@@ -182,13 +185,15 @@ truncated rollouts are reported as their own category.
 - **Slices:** inside `<think>` vs after it; token class (whitespace,
   word, digit, symbol); position within the rollout; rollout length bin
   × outcome (correct / incorrect / truncated); per-token entropy bin.
-- **Sampling:** two arms, both reported. (a) The model-recommended
-  settings: every OLMo-3 checkpoint ships `temperature=0.6, top_p=0.95`
-  in its `generation_config.json`, which both sharpens the distribution
-  and truncates the tail where non-canonical tokens live. (b)
-  Temperature 1.0 with top-p 1.0, the untruncated distribution, which
-  measures what the model actually learned independent of how the
-  provider thinks it should be run.
+- **Sampling:** the primary arm is temperature 1.0 with top-p 1.0, the
+  untruncated distribution, which measures what the model actually
+  learned independent of how the provider thinks it should be run. The
+  model-recommended settings (every OLMo-3 checkpoint ships
+  `temperature=0.6, top_p=0.95` in its `generation_config.json`, which
+  both sharpens the distribution and truncates the tail where
+  non-canonical tokens live) are a follow-up comparison, expected to
+  remove almost all non-canonical tokens. (Decision 2026-09-03, after
+  the pilot's recommended-settings arm returned 0 in 468k tokens.)
 - **Compliance judge:** `gpt-oss-120b` via OpenRouter, reading decoded
   text only (so it cannot see the outcome variable), grading coherence,
   staying on task, and instruction-following for chat prompts. Rates are
@@ -260,6 +265,56 @@ Predictions for this project:
 9. Non-canonical rates are higher when the model does not know the
    answer, at least for length-matched rollouts, also because entropy is
    higher when the model does not know the answer.
+
+Added 2026-09-03 after the pilot (Think RL final, 50 DAPO prompts:
+0.0037% at temperature 1, 0 at recommended settings; all events inside
+the think block; several events are two words emitted without the space
+between them, e.g. `above`+`x`, `as`+`y`, `of`+`t`):
+
+10. Two hypotheses for the very low rate, not yet separable: models reach
+    very low non-canonical rates after sufficient training, or the DAPO
+    prompts are *too* in-distribution (the model was RL-trained on very
+    similar problems). AIME 2024/2025 is shaped slightly differently from
+    the training problems, which a reasoning model should generalize to:
+    **the AIME rate will still be quite low but slightly higher than on
+    DAPO.** Something farther out of distribution but still realistic
+    should be higher again (dataset to be chosen).
+
+    *Notes from Claude:* the held-out DAPO set is likely worse than
+    merely in-distribution: it is what remained after AI2 selected their
+    13.3k RL subset from DAPO, and the pilot's 98–100% accuracy suggests
+    the remainder skews easy. AIME 2024/2025 are reported as benchmarks
+    for these models in the OLMo 3 report, so AI2 decontaminated against
+    them, which makes them genuinely held out rather than just differently
+    worded.
+11. The dropped-space word joins have the same shape as the earlier
+    project's prompted `light`+`house` splits, i.e. non-canonical
+    tokenization learned during reasoning. **These become more common
+    over RL training** (checkpoint comparison), and the rate at which
+    they grow is informative, if hackishly, for extrapolating to
+    frontier models with much longer RL runs.
+
+    *Notes from Claude:* in the pilot, five of the ten spans have this
+    word-join shape, and four of those five are in one rollout, the
+    longest in the arm and the only incorrect one. That hints the joins
+    cluster in struggling rollouts rather than spreading evenly; the
+    dispersion statistic in the metrics section is the check. The
+    examples file can tag each span by shape (word join, whitespace run,
+    symbol join) so the join rate is tracked separately from the total
+    across checkpoints.
+12. Some models are known to produce nearly incomprehensible reasoning.
+    If any such model can be run, **its incomprehensible reasoning will
+    have a surprisingly large non-canonical rate.**
+
+    *Notes from Claude:* the nearest runnable candidate is already in the
+    family: `Olmo-3-7B-RL-Zero-Math`, RL straight from the base with no
+    SFT stage to canonicalize it, same tokenizer, and zero-style models
+    are the ones with documented readability problems (DeepSeek reported
+    language mixing and poor readability for R1-Zero).
+    `Open-Reasoner-Zero-32B` and `DAPO-Qwen-32B` are the same recipe on
+    Qwen2.5-32B. The judge's coherence verdict plus the degeneracy
+    heuristics separate "incomprehensible but canonical" from
+    non-canonical, which this prediction needs.
 
 ## Deferred and out of scope for v1
 
