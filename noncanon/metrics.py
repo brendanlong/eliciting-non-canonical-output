@@ -25,6 +25,7 @@ fixed lengths, and top-k entropy per position.
 from __future__ import annotations
 
 import argparse
+import codecs
 import json
 import re
 import statistics
@@ -83,7 +84,7 @@ class Span:
 @dataclass
 class Rollout:
     ids: list[int]
-    excluded_utf8: int = 0  # trailing tokens dropped as an incomplete UTF-8 character
+    excluded_utf8: int = 0  # tokens whose bytes are not valid UTF-8 (cut mid-character, or garbage)
     excluded_truncated: int = 0  # trailing tokens dropped because the cap cut a word
     spans: list[Span] = field(default_factory=list)
     n_canonical: int = 0  # canonical tokens over all measured runs
@@ -135,17 +136,6 @@ class Analyzer:
             e_from, c_from = e_to, c_to
         return len(canonical), spans
 
-    def trim_incomplete_utf8(self, run: list[int]) -> tuple[list[int], int]:
-        """Drop up to four trailing tokens that leave the run mid-character."""
-        run_bytes = self.token_bytes(run)
-        for k in range(min(4, len(run)) + 1):
-            try:
-                b"".join(run_bytes[: len(run) - k]).decode()
-                return run[: len(run) - k], k
-            except UnicodeDecodeError:
-                continue
-        raise ValueError("undecodable bytes inside a run, not just at its end")
-
     def measure(self, ids: list[int], finish_reason: str) -> Rollout:
         ids = list(ids)
         while ids and ids[-1] in self.special:  # the stop token is not text
@@ -158,12 +148,15 @@ class Analyzer:
             r.excluded_truncated = len(ids) - cut
             ids = ids[:cut]
         for offset, run in ordinary_runs(ids, self.special):
-            run, dropped = self.trim_incomplete_utf8(run)
-            r.excluded_utf8 += dropped
-            r.excluded.update(range(offset + len(run), offset + len(run) + dropped))
-            n_canonical, spans = self.canonical_spans(run, offset)
-            r.n_canonical += n_canonical
-            r.spans.extend(spans)
+            kept = set()
+            for s, e in decodable_segments(self.token_bytes(run)):
+                kept.update(range(s, e))
+                n_canonical, spans = self.canonical_spans(run[s:e], offset + s)
+                r.n_canonical += n_canonical
+                r.spans.extend(spans)
+            bad = [offset + i for i in range(len(run)) if i not in kept]
+            r.excluded_utf8 += len(bad)
+            r.excluded.update(bad)
         r.ids = ids
         return r
 
@@ -238,6 +231,31 @@ class Analyzer:
             "entropy_at_nc": [float(entropies[i]) for i in nc_emitted if i < len(entropies)],
             "spans": spans_out,
         }
+
+
+def decodable_segments(chunks: list[bytes]) -> list[tuple[int, int]]:
+    """Maximal token ranges whose concatenated bytes are valid UTF-8.
+
+    A rollout can end mid-character (cut by the cap) or, rarely, emit bytes
+    that are not UTF-8 at all. Tokens in an incomplete or invalid sequence
+    are left out of every segment so they are not measured.
+    """
+    segments, start, clean_end = [], 0, 0
+    dec = codecs.getincrementaldecoder("utf-8")()
+    for i, b in enumerate(chunks):
+        try:
+            dec.decode(b)
+        except UnicodeDecodeError:
+            if clean_end > start:
+                segments.append((start, clean_end))
+            dec.reset()
+            start = clean_end = i + 1
+            continue
+        if not dec.getstate()[0]:  # no bytes buffered: the character is complete
+            clean_end = i + 1
+    if clean_end > start:
+        segments.append((start, clean_end))
+    return segments
 
 
 def cumulative_ends(chunks: list[bytes]) -> list[int]:

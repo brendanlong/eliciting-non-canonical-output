@@ -98,6 +98,17 @@ def test_incomplete_utf8_tail_is_excluded_not_counted(an):
     assert a["excluded_utf8"] == 1 and a["n_tokens"] == len(ids) - 1 and a["nc_canonical"] == 0
 
 
+def test_invalid_utf8_in_the_middle_excludes_only_the_bad_bytes(an):
+    # A lone continuation byte is invalid anywhere; the words on either side
+    # must still be measured, and the bad token excluded.
+    bad = next(t for t in range(0, 100256) if (b := an.token_bytes([t])[0]) and (b[0] & 0xC0) == 0x80 and len(b) == 1)
+    left, right = enc(an, "The quick brown fox"), enc(an, " jumps over the lazy dog")
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", left + [bad] + right))
+    assert a["excluded_utf8"] == 1
+    assert a["n_tokens"] == len(left) + len(right)
+    assert a["nc_canonical"] == 0
+
+
 def test_truncated_rollout_drops_its_last_word(an):
     # The cap cuts " numbers" after " nu"; the half-word's tokens are not
     # measured, so a cut is not mistaken for a non-canonical span.

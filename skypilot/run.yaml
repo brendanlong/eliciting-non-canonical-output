@@ -40,6 +40,9 @@ run: |
   export UV_NO_SYNC=1
   nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
   uv run python -m noncanon.gpu_check || exit 1
+  # Generation is the expensive, irreplaceable part: run it for every prompt
+  # file first and stop on failure. Metrics are recomputable, so a metrics
+  # failure is logged and the records are still uploaded.
   set -e
   for entry in $PROMPTS; do
     file="${entry%%:*}"
@@ -49,7 +52,10 @@ run: |
     mkdir -p "$OUT"
     uv run python -m noncanon.generate --model "$MODEL" --revision "$REVISION" \
         --prompts "$file" --n "$n" --arms "$ARMS" --max-tokens "$MAX_TOKENS" --out-dir "$OUT"
+  done
+  set +e
+  for OUT in out/"$RUN_NAME"/*/; do
     uv run python -m noncanon.metrics --tokenizer "$MODEL" --revision "$REVISION" \
-        --records "$OUT"/*.parquet --out-dir "$OUT/metrics"
+        --records "$OUT"/*.parquet --out-dir "$OUT/metrics" || echo ">>> metrics failed for $OUT (records are still uploaded)"
   done
   uv run python -m noncanon.upload "out/$RUN_NAME" "$RUN_NAME" --repo "$HF_DATASET"
