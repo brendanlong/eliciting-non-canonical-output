@@ -279,15 +279,42 @@ between them, e.g. `above`+`x`, `as`+`y`, `of`+`t`):
     **the AIME rate will still be quite low but slightly higher than on
     DAPO.** Something farther out of distribution but still realistic
     should be higher again (dataset to be chosen).
+
+    *Notes from Claude:* the held-out DAPO set is likely worse than
+    merely in-distribution: it is what remained after AI2 selected their
+    13.3k RL subset from DAPO, and the pilot's 98–100% accuracy suggests
+    the remainder skews easy. AIME 2024/2025 are reported as benchmarks
+    for these models in the OLMo 3 report, so AI2 decontaminated against
+    them, which makes them genuinely held out rather than just differently
+    worded.
 11. The dropped-space word joins have the same shape as the earlier
     project's prompted `light`+`house` splits, i.e. non-canonical
     tokenization learned during reasoning. **These become more common
     over RL training** (checkpoint comparison), and the rate at which
     they grow is informative, if hackishly, for extrapolating to
     frontier models with much longer RL runs.
+
+    *Notes from Claude:* in the pilot, five of the ten spans have this
+    word-join shape, and four of those five are in one rollout, the
+    longest in the arm and the only incorrect one. That hints the joins
+    cluster in struggling rollouts rather than spreading evenly; the
+    dispersion statistic in the metrics section is the check. The
+    examples file can tag each span by shape (word join, whitespace run,
+    symbol join) so the join rate is tracked separately from the total
+    across checkpoints.
 12. Some models are known to produce nearly incomprehensible reasoning.
     If any such model can be run, **its incomprehensible reasoning will
     have a surprisingly large non-canonical rate.**
+
+    *Notes from Claude:* the nearest runnable candidate is already in the
+    family: `Olmo-3-7B-RL-Zero-Math`, RL straight from the base with no
+    SFT stage to canonicalize it, same tokenizer, and zero-style models
+    are the ones with documented readability problems (DeepSeek reported
+    language mixing and poor readability for R1-Zero).
+    `Open-Reasoner-Zero-32B` and `DAPO-Qwen-32B` are the same recipe on
+    Qwen2.5-32B. The judge's coherence verdict plus the degeneracy
+    heuristics separate "incomprehensible but canonical" from
+    non-canonical, which this prediction needs.
 
 ## Deferred and out of scope for v1
 
