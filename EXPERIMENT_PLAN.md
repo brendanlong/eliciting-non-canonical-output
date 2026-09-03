@@ -279,16 +279,13 @@ between them, e.g. `above`+`x`, `as`+`y`, `of`+`t`):
     **the AIME rate will still be quite low but slightly higher than on
     DAPO.** Something farther out of distribution but still realistic
     should be higher again (dataset to be chosen).
-11. All pilot events were inside `<think>`, but with ~15× more think
-    tokens than answer tokens the pilot cannot tell whether the think
-    rate is actually higher. Larger runs will.
-12. The dropped-space word joins have the same shape as the earlier
+11. The dropped-space word joins have the same shape as the earlier
     project's prompted `light`+`house` splits, i.e. non-canonical
     tokenization learned during reasoning. **These become more common
     over RL training** (checkpoint comparison), and the rate at which
     they grow is informative, if hackishly, for extrapolating to
     frontier models with much longer RL runs.
-13. Some models are known to produce nearly incomprehensible reasoning.
+12. Some models are known to produce nearly incomprehensible reasoning.
     If any such model can be run, **its incomprehensible reasoning will
     have a surprisingly large non-canonical rate.**
 

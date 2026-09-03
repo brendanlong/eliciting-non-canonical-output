@@ -152,7 +152,7 @@ observing none is 0.33, so the pilot does not distinguish the two
 regions.
 
 **Prediction status.** The pilot is a single checkpoint, so none of the
-before/after predictions are testable from it. Predictions 10–13 in the
+before/after predictions are testable from it. Predictions 10–12 in the
 plan were added after reading these results. Prediction 1's bound
 (<0.1% per token on in-distribution text for a text-distilled-then-RL'd
 model) holds for this checkpoint at both settings. Prediction 2's digit
