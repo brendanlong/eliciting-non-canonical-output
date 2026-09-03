@@ -12,21 +12,29 @@ uv run python -m noncanon.prompts dapo --pilot 50
 
 `open-r1/DAPO-Math-17k-Processed` (config `en`, split `train`): 14,116 rows.
 Filtered against the OLMo-3 RL training prompts by normalized text
-(NFKC, lowercase, whitespace-collapsed; `user:` prefix stripped), exact or
-shared 80-character prefix:
+(NFKC, lowercase, `user:` prefix stripped, then **alphanumerics only**),
+exact or shared 80-character prefix:
 
 | removed because | rows |
 |---|--:|
-| exact match in `Dolci-RL-Zero-Math-7B` (13,314 prompts) | 10,292 |
-| prefix match in `Dolci-RL-Zero-Math-7B` | 176 |
-| exact match in `Dolci-Think-RL-7B` (102,014 prompts) | 49 |
-| prefix match in `Dolci-Think-RL-7B` | 38 |
-| duplicate within DAPO | 131 |
+| exact match in `Dolci-RL-Zero-Math-7B` (13,314 prompts) | 9,886 |
+| prefix match in `Dolci-RL-Zero-Math-7B` | 154 |
+| exact match in `Dolci-Think-RL-7B` (102,014 prompts) | 52 |
+| prefix match in `Dolci-Think-RL-7B` | 35 |
+| duplicate within DAPO | 735 |
 | non-integer answer | 0 |
-| **kept** (`prompts/dapo_heldout.jsonl`) | **3,430** |
+| **kept** (`prompts/dapo_heldout.jsonl`) | **3,254** |
 
-Pilot sample: 50 problems drawn with `random.Random(0)` from the kept set
-(`prompts/dapo_pilot50.jsonl`). Full report: `prompts/dapo_filter_report.json`.
+Full report: `prompts/dapo_filter_report.json`. Pilot sample:
+50 problems drawn with `random.Random(0)` from the kept set
+(`prompts/dapo_pilot50.jsonl`).
+
+Earlier version (commit `6bb02b2`, used for the pilot run below):
+normalization was whitespace-collapsing only, which kept 3,430 problems;
+code review found 77 of those were byte-identical to a training prompt
+once punctuation was stripped (LaTeX spacing differs between copies), so
+the normalization was tightened. The pilot's 50 prompts were drawn from
+the 3,430-set and that file is stored with the pilot artifacts.
 
 ## Pilot: Olmo-3-7B-Think, 50 DAPO prompts, both arms (2026-09-03)
 
