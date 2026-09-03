@@ -44,5 +44,5 @@ run: |
   uv run python -m noncanon.generate --model "$MODEL" --revision "$REVISION" \
       --prompts "$PROMPTS" --arms "$ARMS" --max-tokens "$MAX_TOKENS" --out-dir "$OUT"
   uv run python -m noncanon.metrics --tokenizer "$MODEL" --revision "$REVISION" \
-      --records "$OUT"/*.jsonl.gz --out-dir "$OUT/metrics"
+      --records "$OUT"/*.parquet --out-dir "$OUT/metrics"
   uv run python -m noncanon.upload "$OUT" "$RUN_NAME" --repo "$HF_DATASET"

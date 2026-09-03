@@ -57,13 +57,15 @@ under the model's default chat template (which opens the assistant turn
 with `<think>`). GPU: RunPod A100-80GB (CA-MTL), $1.39/h.
 
 Artifacts: `pilot/` on `brendanlong/noncanonical-post-training`
-(`<arm>.jsonl.gz` rollouts with IDs and logprobs, `<arm>.meta.json`,
-`dapo_pilot50.jsonl` as used, `metrics/summary.{json,md}`,
+(`<arm>.parquet` rollouts with IDs and logprobs in the current record
+schema, converted one-to-one from the `<arm>.jsonl.gz` files the pilot
+wrote before the Parquet switch, which are kept alongside;
+`<arm>.meta.json`; `dapo_pilot50.jsonl` as used; `metrics/summary.{json,md}`,
 `metrics/analysis.jsonl`, `metrics/examples.jsonl`). The metrics in the
-dataset were recomputed locally with the review-fixed `metrics.py`
-(commit `556b56f` onward) and overwrite the on-box copy; the raw records
-are unchanged. Job: SkyPilot job 1 on `noncanon-pilot`, SUCCEEDED,
-41m 51s wall clock including setup, cluster torn down afterwards.
+dataset were recomputed locally with the post-review `metrics.py` and
+overwrite the on-box copy; the raw records are unchanged. Job: SkyPilot
+job 1 on `noncanon-pilot`, SUCCEEDED, 41m 51s wall clock including setup,
+cluster torn down afterwards.
 
 **Throughput** (A100-80GB, 50 concurrent requests submitted, vLLM KV
 budget 119,312 tokens, max concurrency 6.65 at 34,816 tokens):
@@ -74,35 +76,39 @@ budget 119,312 tokens, max concurrency 6.65 at 34,816 tokens):
 | untruncated (1.0 / 1.0) | 50 | 465,346 | 1,103.3 s | 421.8 |
 
 **Rollout length and outcome** (measured tokens exclude the trailing stop
-token; tokens excluded as incomplete UTF-8: 0 in both arms):
+token; excluded as incomplete UTF-8: 0 in both arms; excluded as the cut
+last word of a truncated rollout: 3 tokens in the recommended arm):
 
 | arm | mean | median | p90 | max | finish | think closed | verified correct |
 |---|--:|--:|--:|--:|---|---|---|
-| recommended | 9,366 | 8,526 | 12,666 | 32,768 | 49 stop, 1 length | 49 / 50 | 49 / 49 finished |
+| recommended | 9,366 | 8,526 | 12,666 | 32,765 | 49 stop, 1 length | 49 / 50 | 49 / 49 finished |
 | untruncated | 9,306 | 8,612 | 14,449 | 30,245 | 50 stop | 50 / 50 | 49 / 50 |
 
-**Non-canonical tokens** (per-token rate = emitted tokens inside a
-non-canonical span / measured tokens):
+**Non-canonical tokens.** Per-token rate = canonical tokens inside
+non-canonical spans / canonical tokens; the emitted-token count inside
+spans is given alongside.
 
-| arm | tokens | non-canonical | rate | spans | rollouts with ≥1 | in think | in answer |
-|---|--:|--:|--:|--:|--:|---|---|
-| recommended | 468,313 | 0 | 0.000% | 0 | 0 / 50 | 0 / 439,887 | 0 / 28,426 |
-| untruncated | 465,296 | 20 | 0.0043% | 10 | 6 / 50 | 20 / 435,760 (0.0046%) | 0 / 29,536 |
+| arm | canonical tokens | non-canonical (canonical) | rate | emitted in spans | spans | rollouts with ≥1 | think | answer |
+|---|--:|--:|--:|--:|--:|--:|---|---|
+| recommended | 468,310 | 0 | 0.0000% | 0 | 0 | 0 / 50 | 0 / 439,884 | 0 / 28,426 |
+| untruncated | 465,293 | 17 | 0.0037% | 20 | 10 | 6 / 50 | 17 / 435,760 (0.0039%) | 0 / 29,536 |
 
-Untruncated arm, further slices (20 events; small counts):
+Untruncated arm, further slices (17 canonical / 20 emitted tokens in 10
+spans; small counts). Class and position slices count emitted tokens;
+outcome and length slices count canonical tokens.
 
-- by token class: whitespace 1 / 21,895; digit 0 / 77,219; word
-  14 / 220,526; mixed 2 / 9,191; symbol 3 / 136,465.
-- by outcome: correct 18 / 435,051 (49 rollouts); incorrect 2 / 30,245
+- by token class of the emitted token: whitespace 1 / 21,895; digit
+  0 / 77,219; word 14 / 220,526; mixed 2 / 9,191; symbol 3 / 136,465.
+- by outcome: correct 15 / 435,048 (49 rollouts); incorrect 2 / 30,245
   (1 rollout).
-- by rollout-length quartile (rank-based): q1 4 / 65,503; q2 0 / 88,918;
-  q3 0 / 126,421; q4 16 / 184,454.
-- by relative position decile (0 to 9): 0, 0, 4, 0, 2, 2, 0, 4, 0, 8
-  events; decile 9 rate 0.017%.
+- by rollout-length quartile (rank-based): q1 3 / 65,502; q2 0 / 88,918;
+  q3 0 / 126,421; q4 14 / 184,452.
+- by relative position decile (0 to 9), emitted tokens: 0, 0, 4, 0, 2,
+  2, 0, 4, 0, 8; decile 9 rate 0.017%.
 - sequence-level flag (≥1 event within the first L tokens, over
   rollouts that reached L): L=256 0 / 50; L=1024 0 / 50; L=4096 3 / 48.
-- top-10 entropy (nats, renormalized): mean over all positions 0.359;
-  mean at the 20 non-canonical positions 1.010.
+- top-10 entropy (nats, renormalized over a fixed k=10): mean over all
+  positions 0.343; mean at the 20 non-canonical positions 1.010.
 
 **All ten spans in the untruncated arm** (emitted tokens → canonical
 tokens; `·` marks a space):

@@ -172,8 +172,11 @@ truncated rollouts are reported as their own category.
   rate on the same prompt across checkpoints, which depends on how well
   rollouts can be length-matched. All of the following are recorded and
   probably all reported; the per-token rate is the best single number:
-  - per-token non-canonical rate, counted from a minimal diff between
-    the emitted sequence and the canonical re-encoding;
+  - per-token non-canonical rate: canonical tokens inside non-canonical
+    spans divided by canonical tokens, from a minimal diff between the
+    emitted sequence and its canonical re-encoding, so that numerator and
+    denominator count the same thing (the emitted-token count inside
+    spans is reported alongside);
   - length-matched rate on the same prompt across checkpoints;
   - sequence-level rate at a stated fixed length (familiar, free);
   - expected non-canonical probability mass from top-k logprobs at each

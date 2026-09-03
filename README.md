@@ -19,6 +19,7 @@ ladders, whose stages share one base, one tokenizer and one codebase.
 noncanon/
   prompts.py     build the held-out prompt sets (DAPO filtered against the OLMo-3 RL data; AIME)
   generate.py    vLLM rollouts keeping emitted token IDs, sampled + top-k logprobs, finish reason
+  records.py     the Parquet record schema shared by generation and analysis
   metrics.py     round-trip metric (exact minimal diff), think/answer split, token classes,
                  integer verifier, length/outcome/position slices, top-k entropy
   upload.py      push a run directory to the HF dataset
@@ -48,5 +49,5 @@ Metrics recompute everything from the stored IDs:
 
 ```bash
 uv run python -m noncanon.metrics --tokenizer allenai/Olmo-3-7B-Think \
-    --records out/pilot/*.jsonl.gz --out-dir out/pilot/metrics
+    --records out/pilot/*.parquet --out-dir out/pilot/metrics
 ```

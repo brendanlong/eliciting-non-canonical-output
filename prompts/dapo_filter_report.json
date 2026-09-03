@@ -14,5 +14,6 @@
   },
   "duplicates_within_dapo": 735,
   "non_integer_answer": 0,
+  "distinct_dapo_problems_sharing_a_prefix": 1203,
   "kept": 3254
 }
