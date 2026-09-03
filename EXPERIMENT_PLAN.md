@@ -106,6 +106,17 @@ rough priority order.
 | Llama-3.2-1B/3B vs Llama-3.1-8B | released checkpoints | Logit-distilled (pruned from 8B) vs the from-scratch parent: tests the logit-distillation prediction |
 | Qwen3 small models | released checkpoints | On-policy logit distillation from Qwen3-32B/235B; a hybrid case for the distillation predictions |
 
+### Planned follow-up: the teacher/student question
+
+Prediction 7 (below) compares a distilled student with its teacher and
+needs pairs where both are runnable and share a tokenizer. Candidates:
+
+| Distillation type | Teacher | Student | Notes |
+|---|---|---|---|
+| Logit (teacher-forced) | `Llama-3.1-8B-Instruct` | `Llama-3.2-3B-Instruct`, `Llama-3.2-1B-Instruct` | Per Meta's release notes the 3.2 models were pruned from 3.1-8B and pretrained with logit distillation from the 8B and 70B; post-training was done separately per model, so the pair is not stage-matched |
+| Logit, incl. on-policy | `Qwen3-32B` | `Qwen3-8B`, `Qwen3-4B`, `Qwen3-1.7B` | Per the Qwen3 report the small models were strong-to-weak distilled (off-policy then on-policy logit distillation) from the 32B/235B. The on-policy stage scores the student's own sampled tokens against the teacher, so it is a hybrid case |
+| Sequence-level (text) | `QwQ-32B` | `OpenThinker3-7B` | Student is `Qwen2.5-7B-Instruct` SFT'd on 1.2M QwQ-32B traces; same tokenizer; teacher is RL-trained and runnable. Cleaner than the v1 Think-SFT case, whose teacher (R1) is not runnable |
+
 Dropped from consideration: Qwen3 and gpt-oss as primary subjects (no
 staged siblings, only decode-mode controls); QwQ-32B vs R1-Distill-Qwen-32B
 (different SFT data as well as different RL, so not matched); DeepSeek R1
@@ -175,8 +186,9 @@ truncated rollouts are reported as their own category.
   settings: every OLMo-3 checkpoint ships `temperature=0.6, top_p=0.95`
   in its `generation_config.json`, which both sharpens the distribution
   and truncates the tail where non-canonical tokens live. (b)
-  Temperature 1.0 with top-p 1.0, the untruncated distribution, for
-  comparability with the earlier survey.
+  Temperature 1.0 with top-p 1.0, the untruncated distribution, which
+  measures what the model actually learned independent of how the
+  provider thinks it should be run.
 - **Compliance judge:** `gpt-oss-120b` via OpenRouter, reading decoded
   text only (so it cannot see the outcome variable), grading coherence,
   staying on task, and instruction-following for chat prompts. Rates are
