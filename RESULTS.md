@@ -157,3 +157,73 @@ plan were added after reading these results. Prediction 1's bound
 (<0.1% per token on in-distribution text for a text-distilled-then-RL'd
 model) holds for this checkpoint at both settings. Prediction 2's digit
 bound holds (0 / 77,219 and 0 / 84,853 digit tokens).
+
+## Full run, in progress: Think RL final vs Think-DPO vs RL-Zero-Math (2026-09-03)
+
+Untruncated arm only (temperature 1.0, top-p 1.0). Prompt sets:
+`prompts/dapo_sample500.jsonl` (500 held-out DAPO problems, seed 0, from the
+3,254-problem set) and `prompts/aime_2024_2025.jsonl` at 8 samples per
+problem (480 rollouts). One B200 ($6.79/h) per checkpoint; `max_tokens`
+32,768; otherwise as the pilot. Launch:
+
+```
+sky launch -c <cluster> skypilot/run.yaml --gpus B200:1 -i 20 --down -y -d --env HF_TOKEN \
+    --env MODEL=<checkpoint> --env RUN_NAME=<run>
+```
+
+Incidents: the first Think B200 host had a dead network (0 bytes received
+over 10 s while `uv sync` sat at 2% CPU for 20 min) and was replaced. The
+DPO and Zero jobs finished DAPO generation and then failed in the on-box
+metrics step on rollouts containing invalid UTF-8 mid-run (fixed in
+`metrics.py` by measuring only decodable segments; the records were copied
+off the boxes first and the metrics below were computed locally with the
+fixed code). Their AIME halves were relaunched on the same clusters.
+Throughput on the B200s ran 1,500–2,000 output tokens/s once contexts
+lengthened (about 3.5–4× the A100 at the same phase), with a 300k-token KV
+budget (2.5× the A100).
+
+### DAPO 500, DPO and Zero (Think 500 pending)
+
+| checkpoint | rollouts | finish | mean / median / max tokens | accuracy (finished, parsed) | excluded tokens (UTF-8 / cut word) |
+|---|--:|---|---|--:|---|
+| `Olmo-3-7B-Think-DPO` | 500 | 497 stop, 3 length; think closed 490 | 8,184 / 6,710 / 32,764 | 98.5% (18 unparsed) | 207 / 6 |
+| `Olmo-3-7B-RL-Zero-Math` | 500 | 499 stop, 1 length; no think block | 6,265 / 5,360 / 32,767 | 89.6% (1 unparsed) | 5 / 1 |
+
+| checkpoint | canonical tokens | non-canonical (canonical) | rate | emitted in spans | spans | rollouts with ≥1 | span shapes (whitespace / alphabetic / symbolic) |
+|---|--:|--:|--:|--:|--:|--:|---|
+| Think-DPO | 4,091,872 | 655 | 0.0160% | 819 | 403 | 251 / 500 | 232 / 69 / 102 |
+| RL-Zero-Math | 3,132,352 | 742 | 0.0237% | 1,091 | 543 | 290 / 500 | 4 / 176 / 363 |
+| (pilot, Think RL final, 50 prompts, old sample) | 465,293 | 17 | 0.0037% | 20 | 10 | 6 / 50 | 1 / 5 / 4 |
+
+Think-DPO: think 631 / 3,750,286 (0.0168%), answer 24 / 341,750 (0.0070%).
+Entropy (top-10, nats): all positions 0.286, at non-canonical positions
+0.803. By outcome: correct 603 / 3.68M (472 rollouts), incorrect 8 / 118k
+(7), truncated 18 / 98k (3), unparsed 26 / 194k (18). By length quartile
+(q1 shortest): 0.025%, 0.022%, 0.016%, 0.012%. Token class of the emitted
+tokens in spans: whitespace 234, digit 7, word 281, mixed 78, symbol 219.
+
+RL-Zero-Math: no think block, so all tokens are "answer". Entropy 0.365 all
+positions, 0.555 at non-canonical positions. By outcome: correct 550 / 2.51M
+(446 rollouts), incorrect 190 / 572k (52), truncated 0 / 33k (1). By length
+quartile: 0.029%, 0.017%, 0.028%, 0.023%. Token class of emitted tokens in
+spans: whitespace 4, digit 135, word 407, mixed 18, symbol 527.
+
+**Most common span patterns** (emitted → canonical; count):
+
+Think-DPO (403 spans): `' '`,`'.'` → `' .'` ×16; `' '`,`'�'` (space then a
+partial multi-byte character) → `' �'` ×14; `' '`,`'**'` → `' **'` ×7;
+`' '`,`'.\n\n'` ×4; `'”'`,`'的'` → `'”的'` ×3; `'当'`,`'前'` → `'当前'`
+(Chinese inside the English CoT). Most spans are a bare space token
+followed by punctuation or a word piece. Densest rollouts: 8, 6, 5, 5, 5
+spans.
+
+RL-Zero-Math (543 spans): `' $'`,`'($'` → `' $($'` ×213; `'3'`,`'5'` →
+`'35'` ×45 (a digit split); `' AE'`,`'FB'` → `' A'`,`'EF'`,`'B'` ×12;
+dropped-space word joins with a variable name: `' than'`,`'k'` → `' thank'`
+×10, `' when'`,`'g'` → `' wh'`,`'eng'` ×10, `'Thus'`,`'k'` ×9, `' for'`,`'k'`
+×7, `' of'`,`'f'` ×6. Heavily clustered: one rollout carries 52 spans and
+another 30.
+
+Prediction status for this cell: not yet, Think RL final at 500 prompts is
+still running; the pilot's 50-prompt Think number is on a different prompt
+sample and is listed for orientation only.
