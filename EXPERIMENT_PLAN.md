@@ -318,6 +318,60 @@ between them, e.g. `above`+`x`, `as`+`y`, `of`+`t`):
     heuristics separate "incomprehensible but canonical" from
     non-canonical, which this prediction needs.
 
+## Related work (notes from Claude, 2026-09-03)
+
+Two papers Brendan supplied, summarised for the writeup. Facts only.
+
+**Geh, Zhang, Ahmed, Wang, Van den Broeck, "Where is the signal in
+tokenization space?" (arXiv 2408.08541, v2 June 2025).** Studies the
+distribution an LLM induces over the exponentially many tokenizations of a
+string. Finding the most likely tokenization is NP-complete and the marginal
+string probability is #P-hard (Theorems 4.2, 5.2); a branch-and-bound search
+always returned the canonical tokenization as the most likely for short
+strings, and the marginal is usually indistinguishable from the canonical
+probability. Directly relevant numbers: (a) Figure 5, "canonicity in
+generated text": under *unconditional* sampling from the base models, the
+fraction of generated sequences that are still canonical falls with length,
+to about 84% for Gemma-2B, 95% for Llama-2-7B and 60% for Mamba-130M at 128
+tokens, i.e. roughly 0.13%, 0.04% and 0.4% per token; the non-canonical
+cases were mostly non-English, code, and unicode-heavy text. (b) Figure 4:
+for the single word `Tokens` under Llama-2, P(non-canonical | text) ≈ 0.004.
+(c) Examples where a non-canonical tokenization is *more* likely than the
+canonical one: `_tongueless` as `[_tongue, less]` (p 0.518 vs canonical
+`[_tong, uel, ess]` 0.474) and `Hypnopaturist` as `[Hyp, no, patu, rist]`
+(0.9948 vs canonical 0.0004) — the model prefers morphologically sensible
+splits of rare compounds, the same shape as the `light`+`house` induction
+and the pilot's word joins. (d) Mixing canonical and non-canonical
+tokenization probabilities improves multiple-choice QA accuracy by 0.7–2.2
+points on Llama-2-7B, Gemma-2B and Mamba (Table 1), so the mass on
+non-canonical tokenizations carries usable signal. Models: Llama-2-7B,
+Gemma-2B, Mamba-130M only; no post-training comparison.
+
+**Jain, Day, Can, "Emergent retokenization symmetry in large language
+models" (arXiv 2606.15521, June 2026).** Input-side counterpart: feeds
+*retokenized prompts* (each canonical token re-segmented with probability
+p_retok into shorter vocabulary tokens; special and template tokens left
+canonical) and measures the effect on hidden states and task accuracy.
+Uses the OLMo-2-7B pretraining and post-training checkpoints (base, SFT,
+DPO, Instruct/RLVR) — the previous generation of the ladder used here.
+Findings: hidden-state displacement under retokenization shrinks over
+pretraining in all layers except the final one; pass@retok(k) (diversity
+from re-segmenting the prompt, greedy decoding) tracks pass@k in shape and
+recovers HumanEval solutions canonical decoding misses; across post-training
+stages both pass@k and pass@retok rise, with the biggest gains at SFT and
+DPO and marginal gains from DPO to the RLVR Instruct model (Figure 3), so
+robustness to non-canonical *input* tracks task competence. Retokenization
+lengthens prompts and is less compute-efficient than temperature sampling
+under a matched token budget. No output-side non-canonical rates are
+reported.
+
+**Prompt ideas these suggest** (not adopted unless Brendan says so):
+rare compounds and morphologically decomposable words (Geh's examples) as
+elicitation material; non-English and code text as the regime where Geh
+found most spontaneous non-canonical output; and a cheap input-side arm
+using Jain's retokenization procedure on the same prompts, asking whether a
+non-canonical *input* segmentation raises the non-canonical *output* rate.
+
 ## Deferred and out of scope for v1
 
 - **Elicitation** (prompting models into non-canonical output). Planned
