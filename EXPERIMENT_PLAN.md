@@ -365,6 +365,16 @@ lengthens prompts and is less compute-efficient than temperature sampling
 under a matched token budget. No output-side non-canonical rates are
 reported.
 
+**Brendan's reading (2026-09-03).** Geh et al.'s rates are probably an
+old/small-model effect. Code and unicode prompts would be interesting, but
+the model may go non-canonical there simply because it does not know what
+to do with the input; a possible follow-up is code or unicode prompts with
+the judge checking that the model is not just confused. Jain et al. ask a
+different question, worth citing as the opposite direction: does RLVR make
+the model better at *reading* non-canonical tokens (guess: no). It has
+implications here: if a model produces more non-canonical tokens but also
+reads them better, that is good-ish.
+
 **Prompt ideas these suggest** (not adopted unless Brendan says so):
 rare compounds and morphologically decomposable words (Geh's examples) as
 elicitation material; non-English and code text as the regime where Geh
