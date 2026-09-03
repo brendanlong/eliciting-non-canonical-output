@@ -160,7 +160,9 @@ class Analyzer:
                         "region": _region(start + es, think_end, has_think),
                         "emitted": [pieces[i] for i in range(start + es, start + ee)],
                         "canonical": [self.piece(t) for t in canon[cs:ce]],
-                        "context": "".join(pieces[max(0, start + es - 8) : start + es]),
+                        # Decode the context jointly: a multi-byte character split
+                        # across tokens would otherwise render as replacement marks.
+                        "context": b"".join(all_bytes[max(0, start + es - 8) : start + es]).decode("utf-8", errors="replace"),
                         "classes": [classes[i] for i in range(start + es, start + ee)],
                     }
                 )
