@@ -1,9 +1,7 @@
 # Experiment plan: non-canonical token output across post-training stages
 
 **Status:** plan written 2026-09-03, before any runs. Predictions in this
-file are Brendan's, recorded before data collection; items marked
-*(to confirm)* came up in planning discussion and are awaiting his
-explicit sign-off.
+file are Brendan's, recorded before data collection.
 
 ## Relationship to the earlier project
 
@@ -120,19 +118,35 @@ and have no staged siblings, so they do not serve the main question.
 
 ## Prompts
 
-1. **Held-out DAPO-style math problems.** Integer-answer competition
-   problems of the kind the Think track was RL-trained on. Filtered
-   against the public RL training sets (`Dolci-RLZero-Math-7B`, the
-   Dolci Think RL data) so no prompt in the evaluation set was an RL
-   training prompt. Correctness is checked by a deterministic verifier on
-   the boxed answer, not by a judge. Proof-style problems are dropped:
-   the models were not trained on them and there is no verifier.
-2. **Realistic English chat prompts.** Real single-turn and multi-turn
-   conversation prefixes from public chat datasets (WildChat / LMSYS
-   Chat-1M), English-filtered; the model generates only the final
-   assistant turn. Used for the Instruct track and, once the math
-   headline exists, for the Think track. Instruction-following and
-   coherence are judged per generation.
+1. **Held-out DAPO-Math-17k problems.** Source:
+   `open-r1/DAPO-Math-17k-Processed` (English config, ~17.4k unique
+   problems; the original `BytedTsinghua-SIA/DAPO-Math-17k` repeats each
+   prompt for training epochs). Answers are integers by DAPO's design, so
+   correctness is a deterministic check on the extracted boxed answer,
+   not a judge verdict. DAPO is the training distribution for
+   `Olmo-3-7B-RL-Zero-Math` and likely part of the Think RL data, so the
+   evaluation set is the remainder after filtering against the public RL
+   training sets (`Dolci-RLZero-Math-7B`, `Dolci-Think-RL-7B`) by
+   normalized exact match on the problem text. The filter script and the
+   surviving count are recorded in the repo. Proof-style problems are
+   dropped: the models were not trained on them and there is no verifier.
+2. **AIME 2024 and 2025** (`Maxwell-Jia/AIME_2024`,
+   `MathArena/aime_2025`; 30 integer-answer problems each), sampled
+   several times per problem, as a harder tier for the
+   "model does not know the answer" comparison. Same verifier.
+3. **WildChat-1M chat prefixes** (`allenai/WildChat-1M`, ODC-BY). Real
+   user conversations with GPT-3.5/4, with per-conversation language,
+   toxicity and turn-count fields. Filtered to English and non-toxic, and
+   to prompts whose original assistant reply was at least a few hundred
+   tokens (a free proxy for "this prompt calls for a long answer"). A
+   prefix is cut at a user turn and the model generates only that
+   assistant turn, so both single-turn and multi-turn cases come from
+   the same source. Tulu 3's SFT mixture drew ~100k prompts from
+   WildChat and the Dolci Instruct data derives from Tulu 3, so prompts
+   are also filtered against the Dolci Instruct SFT, DPO and RL prompt
+   sets. Used for the Instruct track and, once the math headline exists,
+   for the Think track. Instruction-following and coherence are judged
+   per generation.
 
 Rollouts are given enough room to finish (32k-token cap for Think,
 matching its RL training length); the finish reason is stored and
@@ -143,30 +157,41 @@ truncated rollouts are reported as their own category.
 - **Token IDs are captured at generation** (vLLM, bf16 weights and bf16
   KV cache, no speculative decoding). The round-trip check runs on the
   emitted IDs.
-- **Headline metric:** per-token non-canonical rate, counted from a
-  minimal diff between the emitted sequence and the canonical
-  re-encoding.
-- **Secondary:** sequence-level rate at a stated fixed length (familiar,
-  free, not the headline); expected non-canonical probability mass from
-  top-k logprobs at each position (a low-variance additional estimate);
-  dispersion of events within rollouts.
+- **Metrics.** None of the available single numbers is fully
+  satisfactory. The best comparison is the length-matched non-canonical
+  rate on the same prompt across checkpoints, which depends on how well
+  rollouts can be length-matched. All of the following are recorded and
+  probably all reported; the per-token rate is the best single number:
+  - per-token non-canonical rate, counted from a minimal diff between
+    the emitted sequence and the canonical re-encoding;
+  - length-matched rate on the same prompt across checkpoints;
+  - sequence-level rate at a stated fixed length (familiar, free);
+  - expected non-canonical probability mass from top-k logprobs at each
+    position (a low-variance additional estimate);
+  - dispersion of events within rollouts.
 - **Slices:** inside `<think>` vs after it; token class (whitespace,
   word, digit, symbol); position within the rollout; rollout length bin
   × outcome (correct / incorrect / truncated); per-token entropy bin.
-- **Sampling:** two arms, model-recommended settings and temperature 1.0
-  with top-p 1.0; both reported.
+- **Sampling:** two arms, both reported. (a) The model-recommended
+  settings: every OLMo-3 checkpoint ships `temperature=0.6, top_p=0.95`
+  in its `generation_config.json`, which both sharpens the distribution
+  and truncates the tail where non-canonical tokens live. (b)
+  Temperature 1.0 with top-p 1.0, the untruncated distribution, for
+  comparability with the earlier survey.
 - **Compliance judge:** `gpt-oss-120b` via OpenRouter, reading decoded
   text only (so it cannot see the outcome variable), grading coherence,
   staying on task, and instruction-following for chat prompts. Rates are
   reported raw and conditioned on judged compliance, with the compliance
   fraction. The judge is validated on a random ~200-item subsample
-  against a stronger model, and ~30 items are read by hand; agreement is
-  reported. Cheap heuristics (repeated n-gram fraction, non-ASCII ratio,
-  truncation) are recorded alongside as a non-LLM degeneracy signal.
+  against a stronger model, and agreement is reported. Some transcripts
+  and verdicts are read by hand; the number read is reported in the
+  results rather than committed to here. Cheap heuristics (repeated
+  n-gram fraction, non-ASCII ratio, truncation) are recorded alongside
+  as a non-LLM degeneracy signal.
 
 ## Run order
 
-1. **Pilot:** one checkpoint, ~50 held-out DAPO prompts, to measure the
+1. **Pilot:** one checkpoint, ~50 filtered DAPO prompts, to measure the
    rollout length distribution and truncation rate and to exercise ID
    capture, the round-trip metric, the verifier, and the upload path end
    to end. Budgets below are re-derived from the pilot.
@@ -184,23 +209,33 @@ card. Each checkpoint's records are uploaded as it completes.
 
 ## Predictions (Brendan's, recorded before running)
 
-Carried over from the earlier project's plan:
+Results from the earlier project, predicted to hold on the longer and
+more realistic prompt sets used here:
 
 1. Text-distilled models (trained only on re-tokenized teacher output,
    e.g. Think-SFT) have very low non-canonical rates on in-distribution
    text: <0.1% per token.
 2. Digits have very low non-canonical rates in modern models with sane
    tokenization (<0.1%); structurally 0% for single-digit tokenizers.
-3. From-scratch-trained models have higher rates than text-distilled
-   models.
-4. Rates are higher during reasoning, especially inside the CoT.
-5. On rollouts hard enough to trigger "desperation", reasoning rates are
+
+Predictions for this project:
+
+3. **On-policy RL raises the rate.** Models trained exclusively with
+   on-policy RL (the RL-Zero models, if run as a follow-up) have higher
+   rates than models whose post-training was SFT, and on-policy RL
+   checkpoints trained on top of SFT (Think RL final, Instruct RL final)
+   have higher rates than the earlier SFT endpoints (SFT, DPO). The
+   expected effect is smaller for Instruct, given its shorter RL run and
+   shorter rollouts. No from-scratch models are tested in v1.
+4. DPO does not move the rate relative to SFT (DPO trains on stored
+   text, not emitted IDs), so the pattern within a track is
+   SFT ≈ DPO < RL.
+5. Rates are higher during reasoning, especially inside the CoT.
+   Reasoning is what the RL stage trains most directly, and the effect
+   would be larger for the CoT if the CoT is intentionally not trained
+   on; whether that is the case for this model is not known.
+6. On rollouts hard enough to trigger "desperation", reasoning rates are
    higher still.
-
-Added during planning for this project:
-
-6. Predictions 1 and 2 hold on the longer, more realistic prompt sets
-   used here.
 7. Two distillation mechanisms, pulling in opposite directions:
    teacher-forced **logit** distillation yields a student with *higher*
    rates than its teacher (it is a worse model); **sequence-level**
@@ -209,15 +244,11 @@ Added during planning for this project:
    while the teacher was also RL-trained). Only the second is testable in
    v1 (Think-SFT); the first needs the Llama-3.2 or Qwen3 extension
    models.
-8. On-policy RL raises the rate: **Think RL final > Think DPO** (and
-   likewise Instruct RL final > Instruct DPO, with a smaller expected
-   effect given the shorter RL run).
-9. *(to confirm)* DPO does not move the rate relative to SFT (DPO trains
-   on stored text, not emitted IDs), so the pattern is SFT ≈ DPO < RL.
-10. Non-canonical rates rise with rollout length, because entropy rises
-    over long rollouts.
-11. Non-canonical rates are higher when the model does not know the
-    answer, at least for length-matched rollouts.
+8. Non-canonical rates rise with rollout length, because entropy rises
+   over long rollouts.
+9. Non-canonical rates are higher when the model does not know the
+   answer, at least for length-matched rollouts, also because entropy is
+   higher when the model does not know the answer.
 
 ## Deferred and out of scope for v1
 
