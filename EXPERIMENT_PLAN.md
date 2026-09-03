@@ -382,6 +382,17 @@ found most spontaneous non-canonical output; and a cheap input-side arm
 using Jain's retokenization procedure on the same prompts, asking whether a
 non-canonical *input* segmentation raises the non-canonical *output* rate.
 
+## Follow-ups under consideration
+
+- **Downstream divergence at non-canonical spans** (added 2026-09-03).
+  At each collected span, teacher-force the emitted prefix and the
+  canonical re-encoding of the same text and compare the next-token
+  distributions downstream, per checkpoint (DPO vs RL final). This is the
+  earlier project's boundary-divergence analysis rerun on this data, and
+  it answers "how important is this" cheaply: whether the model's own
+  non-canonical tokens perturb its continuation, and whether RL changes
+  that. A few hundred spans of forward passes on a 7B model.
+
 ## Deferred and out of scope for v1
 
 - **Elicitation** (prompting models into non-canonical output). Planned
