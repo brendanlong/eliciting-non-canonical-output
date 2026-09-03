@@ -1,0 +1,55 @@
+# One checkpoint, one or more prompt files, one or more sampling arms.
+#
+#   sky launch -c nc-think skypilot/run.yaml -i 20 --down -y -d --env HF_TOKEN \
+#       --env MODEL=allenai/Olmo-3-7B-Think --env RUN_NAME=think-main
+#   sky logs nc-think
+#
+# PROMPTS is a space-separated list of prompt files, each with an optional
+# ":n" suffix for samples per prompt. Each file gets its own output directory
+# under out/$RUN_NAME/<file stem>/ and the whole run directory is uploaded to
+# the HF dataset at the end.
+
+resources:
+  infra: runpod
+  accelerators: {H100-NVL:1, H100-SXM:1, H200-SXM:1, A100-80GB:1}
+  disk_size: 100
+
+workdir: .
+
+envs:
+  HF_TOKEN: null
+  HF_HUB_ENABLE_HF_TRANSFER: "0"   # RunPod images set this without installing hf_transfer
+  MODEL: allenai/Olmo-3-7B-Think
+  REVISION: main
+  PROMPTS: "prompts/dapo_sample500.jsonl prompts/aime_2024_2025.jsonl:8"
+  RUN_NAME: think-main
+  ARMS: untruncated
+  MAX_TOKENS: "32768"
+  HF_DATASET: brendanlong/noncanonical-post-training
+
+setup: |
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  # vllm==0.11 pins torch 2.8.0, whose PyPI build is CUDA 12.8 — the newest
+  # build the driver-570 RunPod fleet accepts. Newer vLLM pulls CUDA 13 torch.
+  uv sync --frozen --extra gpu
+  uv run --no-sync python -m noncanon.gpu_check
+
+run: |
+  export PATH="$HOME/.local/bin:$PATH"
+  export UV_NO_SYNC=1
+  nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
+  uv run python -m noncanon.gpu_check || exit 1
+  set -e
+  for entry in $PROMPTS; do
+    file="${entry%%:*}"
+    n="${entry##*:}"; [ "$n" = "$entry" ] && n=1
+    stem="$(basename "$file" .jsonl)"
+    OUT="out/$RUN_NAME/$stem"
+    mkdir -p "$OUT"
+    uv run python -m noncanon.generate --model "$MODEL" --revision "$REVISION" \
+        --prompts "$file" --n "$n" --arms "$ARMS" --max-tokens "$MAX_TOKENS" --out-dir "$OUT"
+    uv run python -m noncanon.metrics --tokenizer "$MODEL" --revision "$REVISION" \
+        --records "$OUT"/*.parquet --out-dir "$OUT/metrics"
+  done
+  uv run python -m noncanon.upload "out/$RUN_NAME" "$RUN_NAME" --repo "$HF_DATASET"

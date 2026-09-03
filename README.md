@@ -34,15 +34,15 @@ skypilot/        RunPod task definitions
 ```bash
 uv sync --group dev          # CPU: prompts, metrics, tests
 uv run pytest -q
-uv run python -m noncanon.prompts dapo --pilot 50
+uv run python -m noncanon.prompts dapo --sample 500
 ```
 
 Generation needs a GPU and `uv sync --extra gpu` (vLLM 0.11, torch 2.8 CUDA
 12.8). On RunPod via SkyPilot:
 
 ```bash
-sky launch -c noncanon-pilot skypilot/pilot.yaml -i 20 --down -y -d --env HF_TOKEN
-sky logs noncanon-pilot
+sky launch -c nc-think skypilot/run.yaml -i 20 --down -y -d --env HF_TOKEN --env MODEL=allenai/Olmo-3-7B-Think --env RUN_NAME=think-main
+sky logs nc-think
 ```
 
 Metrics recompute everything from the stored IDs:

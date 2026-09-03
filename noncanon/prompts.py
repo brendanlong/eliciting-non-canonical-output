@@ -1,6 +1,6 @@
 """Build the held-out prompt sets used by every run.
 
-    uv run python -m noncanon.prompts dapo --pilot 50   # prompts/dapo_heldout.jsonl (+ pilot sample)
+    uv run python -m noncanon.prompts dapo --sample 500 # prompts/dapo_heldout.jsonl (+ fixed-seed sample)
     uv run python -m noncanon.prompts aime              # prompts/aime_2024_2025.jsonl
 
 DAPO: ``open-r1/DAPO-Math-17k-Processed`` (English config) minus every problem
@@ -79,7 +79,7 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def build_dapo(pilot: int | None, seed: int) -> None:
+def build_dapo(sample: int | None, seed: int) -> None:
     ds = load_dataset("open-r1/DAPO-Math-17k-Processed", "en", split="train")
     training = training_prompts()
     filt = TrainingFilter(training)
@@ -116,9 +116,9 @@ def build_dapo(pilot: int | None, seed: int) -> None:
     write_jsonl(PROMPT_DIR / "dapo_heldout.jsonl", kept)
     (PROMPT_DIR / "dapo_filter_report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
-    if pilot:
-        write_jsonl(PROMPT_DIR / f"dapo_pilot{pilot}.jsonl", random.Random(seed).sample(kept, pilot))
-        print(f"wrote {pilot}-prompt pilot sample (seed {seed})")
+    if sample:
+        write_jsonl(PROMPT_DIR / f"dapo_sample{sample}.jsonl", random.Random(seed).sample(kept, sample))
+        print(f"wrote {sample}-prompt sample (seed {seed})")
 
 
 def build_aime() -> None:
@@ -137,11 +137,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("dapo")
-    d.add_argument("--pilot", type=int, default=None, help="also write a random pilot sample of this size")
+    d.add_argument("--sample", type=int, default=None, help="also write a fixed-seed random sample of this size")
     d.add_argument("--seed", type=int, default=0)
     sub.add_parser("aime")
     args = ap.parse_args()
-    build_dapo(args.pilot, args.seed) if args.cmd == "dapo" else build_aime()
+    build_dapo(args.sample, args.seed) if args.cmd == "dapo" else build_aime()
 
 
 if __name__ == "__main__":

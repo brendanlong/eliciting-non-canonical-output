@@ -191,9 +191,11 @@ truncated rollouts are reported as their own category.
   model-recommended settings (every OLMo-3 checkpoint ships
   `temperature=0.6, top_p=0.95` in its `generation_config.json`, which
   both sharpens the distribution and truncates the tail where
-  non-canonical tokens live) are a follow-up comparison, expected to
-  remove almost all non-canonical tokens. (Decision 2026-09-03, after
-  the pilot's recommended-settings arm returned 0 in 468k tokens.)
+  non-canonical tokens live) are a second, less important run rather
+  than dropped: if the recommended settings take the rate to ~0, that
+  says a lot about the practical risk versus the theoretical risk.
+  (Decision 2026-09-03, after the pilot's recommended-settings arm
+  returned 0 in 468k tokens: untruncated results first.)
 - **Compliance judge:** `gpt-oss-120b` via OpenRouter, reading decoded
   text only (so it cannot see the outcome variable), grading coherence,
   staying on task, and instruction-following for chat prompts. Rates are

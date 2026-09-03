@@ -47,6 +47,17 @@ WHITESPACE_BYTES = (b" ", b"\n", b"\t", b"\r")
 _BYTE_DECODER = {u: b for b, u in bytes_to_unicode().items()}
 
 
+def span_shape(classes: list[str]) -> str:
+    """Coarse shape of a span from its emitted tokens' classes: a whitespace
+    run, an all-alphabetic span (two words emitted without the space between
+    them, or a word split unusually), or anything involving symbols/digits."""
+    if "whitespace" in classes:
+        return "whitespace"
+    if all(c == "word" for c in classes):
+        return "alphabetic"
+    return "symbolic"
+
+
 def token_class(piece: str) -> str:
     s = piece.strip()
     if not s:
@@ -191,6 +202,7 @@ class Analyzer:
                 # otherwise render as replacement marks.
                 "context": b"".join(all_bytes[max(0, s.start - 8) : s.start]).decode(errors="replace"),
                 "classes": [classes[i] for i in range(s.start, s.start + len(s.emitted))],
+                "shape": span_shape([classes[i] for i in range(s.start, s.start + len(s.emitted))]),
             }
             for s in r.spans
         ]
@@ -213,6 +225,7 @@ class Analyzer:
             "nc_emitted": len(nc_emitted),
             "nc_canonical_think": sum(len(s.canonical) for s in r.spans if region(s.start) == "think"),
             "nc_spans": len(r.spans),
+            "span_shapes": Counter(sp["shape"] for sp in spans_out),
             "nc_positions": [ordinal[i] for i in nc_emitted],
             "nc_classes": Counter(classes[i] for i in nc_emitted),
             "all_classes": Counter(classes.values()),
@@ -366,6 +379,7 @@ def summarize(rows: list[dict]) -> dict:
         "spans": sum(r["nc_spans"] for r in rows),
         "spans_per_1k_tokens": round(1000 * sum(r["nc_spans"] for r in rows) / canonical, 3) if canonical else None,
         "rollouts_with_nc": sum(r["nc_spans"] > 0 for r in rows),
+        "span_shapes": dict(sum((Counter(r["span_shapes"]) for r in rows), Counter())),
         "think": {"tokens": think_canonical, "nc": sum(r["nc_canonical_think"] for r in rows)},
         "answer": {"tokens": sum(r["n_answer"] for r in rows), "nc": nc - sum(r["nc_canonical_think"] for r in rows)},
         "length": {
@@ -402,7 +416,7 @@ def to_markdown(name: str, s: dict) -> str:
         f"- length (emitted tokens): mean {s['length']['mean']}, median {s['length']['median']}, p90 {s['length']['p90']}, max {s['length']['max']}",
         f"- **per-token non-canonical rate: {_pct(s['per_token_rate'])}** ({s['nc_canonical']} of {s['canonical_tokens']} canonical tokens; "
         f"{s['nc_emitted']} emitted tokens in {s['spans']} spans, {s['spans_per_1k_tokens']} spans/1k tokens, "
-        f"{s['rollouts_with_nc']}/{s['rollouts']} rollouts with ≥1)",
+        f"{s['rollouts_with_nc']}/{s['rollouts']} rollouts with ≥1; span shapes {s['span_shapes']})",
         f"- think: {_pct(_rate(think['nc'], think['tokens']))} ({think['nc']} / {think['tokens']}); "
         f"answer: {_pct(_rate(answer['nc'], answer['tokens']))} ({answer['nc']} / {answer['tokens']})",
         f"- sequence-level flag rate at L={list(s['seq_flag_rate'])}: {[_pct(v) for v in s['seq_flag_rate'].values()]}",
@@ -448,7 +462,8 @@ def main() -> None:
                 for sp in a["spans"]:
                     fe.write(json.dumps({**stamp, "prompt_id": a["prompt_id"], "sample": a["sample"], **sp}, ensure_ascii=False) + "\n")
                 slim = {k: v for k, v in a.items() if k not in ("spans", "entropy_at_nc", "nc_positions")}
-                slim["nc_classes"], slim["all_classes"] = dict(slim["nc_classes"]), dict(slim["all_classes"])
+                for k in ("nc_classes", "all_classes", "span_shapes"):
+                    slim[k] = dict(slim[k])
                 fa.write(json.dumps({**stamp, **slim}, ensure_ascii=False) + "\n")
 
     summary = {name: summarize(rows) for name, rows in groups.items()}
