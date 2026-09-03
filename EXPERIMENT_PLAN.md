@@ -128,8 +128,7 @@ and have no staged siblings, so they do not serve the main question.
    evaluation set is the remainder after filtering against the public RL
    training sets (`Dolci-RLZero-Math-7B`, `Dolci-Think-RL-7B`) by
    normalized exact match on the problem text. The filter script and the
-   surviving count are recorded in the repo. Proof-style problems are
-   dropped: the models were not trained on them and there is no verifier.
+   surviving count are recorded in the repo.
 2. **AIME 2024 and 2025** (`Maxwell-Jia/AIME_2024`,
    `MathArena/aime_2025`; 30 integer-answer problems each), sampled
    several times per problem, as a harder tier for the
@@ -255,6 +254,9 @@ Predictions for this project:
 - **Elicitation** (prompting models into non-canonical output). Planned
   as a later step with a structured set of prompt families and fixed
   trial counts; not part of v1.
+- **Proof-style math problems.** Considered as a second math prompt set
+  and dropped: the models were not trained on them and there is no
+  verifier for correctness.
 - **Confusion / non-English prompts.** Detected if it occurs (via the
   judge), not deliberately induced.
 - **Simulated multi-turn conversations** and **agentic coding**. Real
