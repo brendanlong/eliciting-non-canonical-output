@@ -185,15 +185,17 @@ truncated rollouts are reported as their own category.
 - **Slices:** inside `<think>` vs after it; token class (whitespace,
   word, digit, symbol); position within the rollout; rollout length bin
   × outcome (correct / incorrect / truncated); per-token entropy bin.
-- **Sampling:** the primary arm is temperature 1.0 with top-p 1.0, the
-  untruncated distribution, which measures what the model actually
-  learned independent of how the provider thinks it should be run. The
-  model-recommended settings (every OLMo-3 checkpoint ships
-  `temperature=0.6, top_p=0.95` in its `generation_config.json`, which
-  both sharpens the distribution and truncates the tail where
-  non-canonical tokens live) are a follow-up comparison, expected to
-  remove almost all non-canonical tokens. (Decision 2026-09-03, after
-  the pilot's recommended-settings arm returned 0 in 468k tokens.)
+- **Sampling:** two arms. The initial run uses temperature 1.0 with
+  top-p 1.0, the untruncated distribution, which measures what the model
+  actually learned independent of how the provider thinks it should be
+  run, and is expected to be the more informative arm for the SFT vs RL
+  question. The model-recommended settings (every OLMo-3 checkpoint
+  ships `temperature=0.6, top_p=0.95` in its `generation_config.json`,
+  which both sharpens the distribution and truncates the tail where
+  non-canonical tokens live) are a second run, and an important one: it
+  tells us how big a problem this is in practice, as opposed to in
+  principle. (Decision 2026-09-03, after the pilot's recommended-settings
+  arm returned 0 in 468k tokens: untruncated results first.)
 - **Compliance judge:** `gpt-oss-120b` via OpenRouter, reading decoded
   text only (so it cannot see the outcome variable), grading coherence,
   staying on task, and instruction-following for chat prompts. Rates are

@@ -139,7 +139,7 @@ def test_summarize_denominators():
             "nc_spans": len(nc_positions), "nc_positions": nc_positions, "nc_classes": {}, "all_classes": {"word": n},
             "seq_flags": {str(L): any(p < L for p in nc_positions) for L in (256, 1024, 4096)},
             "excluded_utf8": 0, "excluded_truncated": 0, "finish_reason": finish, "correct": correct,
-            "think_closed": None, "entropy_mean": 0.5, "entropy_at_nc": [],
+            "think_closed": None, "entropy_mean": 0.5, "entropy_at_nc": [], "span_shapes": {},
         }
 
     rows = [row(300, [5])] + [row(300, [])] * 3 + [row(5000, [], finish="length")]
