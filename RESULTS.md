@@ -146,8 +146,14 @@ committed as code beyond the tests):
   and end: coherent reasoning ending in a boxed answer and the
   end-of-text token. The ten spans above were read with their context.
 
+Think vs answer: under a common rate of 17 / 465,293 the expected number
+of events in the 29,536 answer tokens is 1.1, and the probability of
+observing none is 0.33, so the pilot does not distinguish the two
+regions.
+
 **Prediction status.** The pilot is a single checkpoint, so none of the
-before/after predictions are testable from it. Prediction 1's bound
+before/after predictions are testable from it. Predictions 10–13 in the
+plan were added after reading these results. Prediction 1's bound
 (<0.1% per token on in-distribution text for a text-distilled-then-RL'd
 model) holds for this checkpoint at both settings. Prediction 2's digit
 bound holds (0 / 77,219 and 0 / 84,853 digit tokens).

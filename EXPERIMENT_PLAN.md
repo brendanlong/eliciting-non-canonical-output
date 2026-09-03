@@ -266,6 +266,32 @@ Predictions for this project:
    answer, at least for length-matched rollouts, also because entropy is
    higher when the model does not know the answer.
 
+Added 2026-09-03 after the pilot (Think RL final, 50 DAPO prompts:
+0.0037% at temperature 1, 0 at recommended settings; all events inside
+the think block; several events are two words emitted without the space
+between them, e.g. `above`+`x`, `as`+`y`, `of`+`t`):
+
+10. Two hypotheses for the very low rate, not yet separable: models reach
+    very low non-canonical rates after sufficient training, or the DAPO
+    prompts are *too* in-distribution (the model was RL-trained on very
+    similar problems). AIME 2024/2025 is shaped slightly differently from
+    the training problems, which a reasoning model should generalize to:
+    **the AIME rate will still be quite low but slightly higher than on
+    DAPO.** Something farther out of distribution but still realistic
+    should be higher again (dataset to be chosen).
+11. All pilot events were inside `<think>`, but with ~15× more think
+    tokens than answer tokens the pilot cannot tell whether the think
+    rate is actually higher. Larger runs will.
+12. The dropped-space word joins have the same shape as the earlier
+    project's prompted `light`+`house` splits, i.e. non-canonical
+    tokenization learned during reasoning. **These become more common
+    over RL training** (checkpoint comparison), and the rate at which
+    they grow is informative, if hackishly, for extrapolating to
+    frontier models with much longer RL runs.
+13. Some models are known to produce nearly incomprehensible reasoning.
+    If any such model can be run, **its incomprehensible reasoning will
+    have a surprisingly large non-canonical rate.**
+
 ## Deferred and out of scope for v1
 
 - **Elicitation** (prompting models into non-canonical output). Planned
