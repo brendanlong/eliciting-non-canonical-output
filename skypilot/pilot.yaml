@@ -21,7 +21,7 @@ envs:
   REVISION: main
   PROMPTS: prompts/dapo_pilot50.jsonl
   RUN_NAME: pilot
-  ARMS: recommended,untruncated
+  ARMS: untruncated
   MAX_TOKENS: "32768"
   HF_DATASET: brendanlong/noncanonical-post-training
 

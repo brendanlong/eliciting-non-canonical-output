@@ -58,7 +58,7 @@ def main() -> None:
     ap.add_argument("--revision", default="main")
     ap.add_argument("--prompts", type=Path, required=True)
     ap.add_argument("--prompt-field", default="problem")
-    ap.add_argument("--arms", default="recommended,untruncated")
+    ap.add_argument("--arms", default="untruncated")
     ap.add_argument("--out-dir", type=Path, required=True)
     ap.add_argument("--n", type=int, default=1, help="samples per prompt")
     ap.add_argument("--limit", type=int, default=None)
