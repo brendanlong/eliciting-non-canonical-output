@@ -72,8 +72,14 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     tok = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
+    # Stop tokens: the checkpoint's generation_config.json if it names any
+    # (Think/Instruct list <|im_end|> and <|endoftext|>); otherwise (RL-Zero
+    # ships none) the tokenizer's EOS plus the chat template's turn end.
     eos = GenerationConfig.from_pretrained(args.model, revision=args.revision).eos_token_id
-    eos_ids = list(eos) if isinstance(eos, (list, tuple)) else [eos]
+    if eos is None:
+        eos = [tok.eos_token_id, tok.convert_tokens_to_ids("<|im_end|>")]
+    eos_ids = sorted({t for t in (eos if isinstance(eos, (list, tuple)) else [eos]) if isinstance(t, int)})
+    assert eos_ids, "no stop token ids found"
 
     prompts = load_prompts(args.prompts, args.prompt_field, args.limit)
     prompt_ids = [
