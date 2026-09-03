@@ -72,21 +72,37 @@ class Analyzer:
         return self.tok.decode([t], skip_special_tokens=False, clean_up_tokenization_spaces=False)
 
     # --- the round trip -----------------------------------------------------------
-    def roundtrip_segment(self, seg: list[int]) -> tuple[list[int], list[tuple[int, int, int, int]], bool]:
-        """Return (canonical ids, spans, byte_mismatch).
+    def trim_incomplete_utf8(self, seg: list[int]) -> tuple[list[int], int, bool]:
+        """Drop trailing tokens that leave the segment's bytes mid-character.
+
+        A rollout cut by ``max_tokens`` can end inside a multi-byte character;
+        those bytes cannot round-trip and must not be measured. Returns
+        (trimmed segment, tokens dropped, still_invalid). ``still_invalid``
+        means the bytes are undecodable even after dropping up to four
+        tokens, so the caller excludes the whole segment.
+        """
+        eb = self.token_bytes(seg)
+        for k in range(0, min(4, len(seg)) + 1):
+            try:
+                b"".join(eb[: len(seg) - k]).decode("utf-8")
+                return seg[: len(seg) - k], k, False
+            except UnicodeDecodeError:
+                continue
+        return seg, 0, True
+
+    def roundtrip_segment(self, seg: list[int]) -> tuple[list[int], list[tuple[int, int, int, int]]]:
+        """Return (canonical ids, spans) for a segment whose bytes are valid UTF-8.
 
         spans are (e_start, e_end, c_start, c_end) index ranges into the
         emitted and canonical sequences whose tokens differ.
         """
-        text = self.tok.decode(seg, skip_special_tokens=False, clean_up_tokenization_spaces=False)
+        eb = self.token_bytes(seg)
+        text = b"".join(eb).decode("utf-8")
         canon = self.tok.encode(text, add_special_tokens=False)
         if seg == canon:
-            return canon, [], False
-        eb, cb = self.token_bytes(seg), self.token_bytes(canon)
-        if b"".join(eb) != b"".join(cb):
-            # Truncated UTF-8 in the emitted stream cannot round-trip; count the
-            # whole segment as one span and flag it.
-            return canon, [(0, len(seg), 0, len(canon))], True
+            return canon, []
+        cb = self.token_bytes(canon)
+        assert b"".join(eb) == b"".join(cb), "canonical re-encoding changed the bytes"
         e_ends, c_ends = _cum(eb), _cum(cb)
         common = sorted(set(e_ends) & set(c_ends))
         spans = []
@@ -100,7 +116,7 @@ class Analyzer:
             if seg[e_start:ei] != canon[c_start:ci]:
                 spans.append((e_start, ei, c_start, ci))
             e_start, c_start = ei, ci
-        return canon, spans, False
+        return canon, spans
 
     # --- one rollout -----------------------------------------------------------
     def analyze(self, rec: dict) -> dict:
@@ -117,20 +133,25 @@ class Analyzer:
         ends = _cum(all_bytes)
         full = b"".join(all_bytes)
 
-        think_end = None  # index of first answer token
+        think_end = None  # index of the first token after the one containing "</think>"
+        answer_start_byte = 0 if not has_think else None
         if has_think:
             pos = full.find(THINK_END)
             if pos >= 0:
-                target = pos + len(THINK_END)
-                think_end = next(i + 1 for i, e in enumerate(ends) if e >= target)
-        nonspecial = [i for i, t in enumerate(ids) if t not in self.special]
+                answer_start_byte = pos + len(THINK_END)
+                think_end = next(i + 1 for i, e in enumerate(ends) if e >= answer_start_byte)
 
+        # Measured tokens: non-special, and not dropped as incomplete UTF-8.
+        excluded: set[int] = set()
         nc_idx: list[int] = []
         spans_out: list[dict] = []
-        byte_mismatch = False
         for start, seg in _segments(ids, self.special):
-            canon, spans, mism = self.roundtrip_segment(seg)
-            byte_mismatch |= mism
+            seg, dropped, invalid = self.trim_incomplete_utf8(seg)
+            if invalid:
+                excluded.update(range(start, start + len(seg)))
+                continue
+            excluded.update(range(start + len(seg), start + len(seg) + dropped))
+            canon, spans = self.roundtrip_segment(seg)
             for es, ee, cs, ce in spans:
                 nc_idx.extend(range(start + es, start + ee))
                 spans_out.append(
@@ -143,22 +164,22 @@ class Analyzer:
                         "classes": [classes[i] for i in range(start + es, start + ee)],
                     }
                 )
+        measured = [i for i, t in enumerate(ids) if t not in self.special and i not in excluded]
+        ordinal = {i: k for k, i in enumerate(measured)}  # raw index -> position among measured tokens
 
-        n = len(nonspecial)
-        n_think = sum(1 for i in nonspecial if think_end is not None and i < think_end) if has_think else 0
-        if has_think and think_end is None:
-            n_think = n  # unfinished think block: everything is CoT
+        n = len(measured)
+        n_think = sum(1 for i in measured if _region(i, think_end, has_think) == "think")
         n_answer = n - n_think
-
         nc_think = sum(1 for i in nc_idx if _region(i, think_end, has_think) == "think")
         nc_answer = len(nc_idx) - nc_think
 
-        answer_text = b"".join(all_bytes[think_end:] if think_end is not None else (all_bytes if not has_think else b"")).decode(
-            "utf-8", errors="replace"
-        )
+        answer_text = full[answer_start_byte:].decode("utf-8", errors="replace") if answer_start_byte is not None else ""
         pred, correct = verify(answer_text, rec.get("answer"))
 
-        entropies = [topk_entropy(lps) for lps in rec.get("topk_logprobs", [])]
+        # Entropy over a fixed k: vLLM's dict holds top-k plus the sampled
+        # token when it fell outside the top-k, so truncate to k entries.
+        k = min((len(l) for l in rec.get("topk_logprobs", [])), default=0)
+        entropies = [topk_entropy(sorted(lps, reverse=True)[:k]) for lps in rec.get("topk_logprobs", [])][: len(ids)]
         return {
             "prompt_id": rec.get("prompt_id"),
             "sample": rec.get("sample"),
@@ -175,13 +196,14 @@ class Analyzer:
             "nc_think": nc_think,
             "nc_answer": nc_answer,
             "nc_spans": len(spans_out),
-            "nc_positions": nc_idx,
+            "nc_positions": [ordinal[i] for i in nc_idx],  # ordinals among measured tokens
             "nc_classes": Counter(classes[i] for i in nc_idx),
-            "all_classes": Counter(classes[i] for i in nonspecial),
-            "seq_flags": {str(L): any(i < L for i in nc_idx) for L in SEQ_LENGTHS},
-            "byte_mismatch": byte_mismatch,
+            "all_classes": Counter(classes[i] for i in measured),
+            "seq_flags": {str(L): any(ordinal[i] < L for i in nc_idx) for L in SEQ_LENGTHS},
+            "excluded_tokens": len(excluded),
             "pred": pred,
             "correct": correct,
+            "entropy_k": k,
             "entropy_mean": statistics.fmean(entropies) if entropies else None,
             "entropy_at_nc": [entropies[i] for i in nc_idx if i < len(entropies)],
             "entropies": entropies,
@@ -230,7 +252,8 @@ def topk_entropy(logprobs: list[float]) -> float:
 
 # --- verifier -----------------------------------------------------------------------
 _BOXED = re.compile(r"\\boxed\s*\{")
-_ANSWER_LINE = re.compile(r"(?im)^\s*\**answer\**\s*[:=]\s*(.+?)\s*$")
+_ANSWER_LINE = re.compile(r"(?im)^\W*(?:final\s+)?answer\W*[:=]\s*(.+?)\s*$")
+_ANSWER_INLINE = re.compile(r"(?i)(?:final\s+)?answer\s+is\W*(-?\d[\d,]*)")
 
 
 def extract_boxed(text: str) -> str | None:
@@ -246,21 +269,31 @@ def extract_boxed(text: str) -> str | None:
 
 
 def parse_int(s: str) -> int | None:
-    s = s.strip().strip("$").replace(",", "").replace(" ", "").rstrip(".")
+    s = s.strip().strip("*").strip()
     s = re.sub(r"^\\text\{(.*)\}$", r"\1", s)
-    m = re.fullmatch(r"-?\d+", s)
-    return int(m.group()) if m else None
+    s = re.sub(r"\{,\}|\\[,!;]|[$,\s]", "", s).rstrip(".")
+    m = re.fullmatch(r"(-?\d+)(?:\.0+)?", s)
+    return int(m.group(1)) if m else None
 
 
 def verify(answer_text: str, gold: str | None) -> tuple[str | None, bool | None]:
+    """Return (prediction string, correct).
+
+    ``correct`` is None only when no answer marker was found at all (or no
+    gold answer is available); a marker whose content is not an integer is a
+    wrong answer to an integer question, so it is False.
+    """
     pred = extract_boxed(answer_text)
     if pred is None:
         lines = _ANSWER_LINE.findall(answer_text)
         pred = lines[-1] if lines else None
+    if pred is None:
+        inline = _ANSWER_INLINE.findall(answer_text)
+        pred = inline[-1] if inline else None
     if gold is None or pred is None:
         return pred, None
     p, g = parse_int(pred), parse_int(gold)
-    if p is None or g is None:
+    if g is None:
         return pred, None
     return pred, p == g
 
@@ -302,15 +335,13 @@ def summarize(rows: list[dict]) -> dict:
         outcome[key][0] += r["n_tokens"]
         outcome[key][1] += r["nc_tokens"]
         outcome[key][2] += 1
-    # rate by rollout-length quartile
+    # rate by rollout-length quartile (rank-based, so ties cannot collapse bins)
     quart = defaultdict(lambda: [0, 0, 0])
-    if lengths:
-        qs = [lengths[int(len(lengths) * q)] for q in (0.25, 0.5, 0.75)]
-        for r in rows:
-            b = sum(r["n_tokens"] > q for q in qs)
-            quart[f"q{b + 1}"][0] += r["n_tokens"]
-            quart[f"q{b + 1}"][1] += r["nc_tokens"]
-            quart[f"q{b + 1}"][2] += 1
+    for rank, r in enumerate(sorted(rows, key=lambda r: r["n_tokens"])):
+        b = min(3, 4 * rank // max(1, n))
+        quart[f"q{b + 1}"][0] += r["n_tokens"]
+        quart[f"q{b + 1}"][1] += r["nc_tokens"]
+        quart[f"q{b + 1}"][2] += 1
     # rate by relative position decile
     dec_tok, dec_nc = Counter(), Counter()
     for r in rows:
@@ -328,7 +359,7 @@ def summarize(rows: list[dict]) -> dict:
         "rollouts": n,
         "finish_reasons": dict(Counter(r["finish_reason"] for r in rows)),
         "think_closed": dict(Counter(str(r["think_closed"]) for r in rows)),
-        "byte_mismatch_rollouts": sum(r["byte_mismatch"] for r in rows),
+        "excluded_tokens": sum(r["excluded_tokens"] for r in rows),
         "tokens": tok,
         "nc_tokens": nc,
         "per_token_rate": _rate(nc, tok),
@@ -343,7 +374,11 @@ def summarize(rows: list[dict]) -> dict:
             "p90": lengths[int(0.9 * (len(lengths) - 1))] if lengths else None,
             "max": lengths[-1] if lengths else None,
         },
-        "seq_flag_rate": {L: _rate(sum(r["seq_flags"][L] for r in rows), n) for L in map(str, SEQ_LENGTHS)},
+        # Denominator: rollouts that reached L tokens (shorter ones cannot fire the flag).
+        "seq_flag_rate": {
+            str(L): _rate(sum(r["seq_flags"][str(L)] for r in rows if r["n_tokens"] >= L), sum(1 for r in rows if r["n_tokens"] >= L))
+            for L in SEQ_LENGTHS
+        },
         "classes": {c: {"tokens": cls_all[c], "nc": cls_nc[c], "rate": _rate(cls_nc[c], cls_all[c])} for c in CLASSES},
         "by_outcome": {k: {"rollouts": v[2], "tokens": v[0], "nc": v[1], "rate": _rate(v[1], v[0])} for k, v in sorted(outcome.items())},
         "by_length_quartile": {k: {"rollouts": v[2], "tokens": v[0], "nc": v[1], "rate": _rate(v[1], v[0])} for k, v in sorted(quart.items())},
@@ -352,13 +387,17 @@ def summarize(rows: list[dict]) -> dict:
             "mean_all_positions": round(statistics.fmean(ent_all), 4) if ent_all else None,
             "mean_at_nc_positions": round(statistics.fmean(ent_nc), 4) if ent_nc else None,
         },
-        "accuracy": _rate(sum(1 for r in rows if r["correct"]), sum(1 for r in rows if r["correct"] is not None)),
+        # Accuracy over finished rollouts only; truncated ones are their own outcome.
+        "accuracy": _rate(
+            sum(1 for r in rows if r["correct"] and r["finish_reason"] != "length"),
+            sum(1 for r in rows if r["correct"] is not None and r["finish_reason"] != "length"),
+        ),
     }
 
 
 def to_markdown(name: str, s: dict) -> str:
     lines = [f"### {name}", ""]
-    lines.append(f"- rollouts: {s['rollouts']}; finish: {s['finish_reasons']}; think closed: {s['think_closed']}; accuracy (parsed): {_pct(s['accuracy'])}")
+    lines.append(f"- rollouts: {s['rollouts']}; finish: {s['finish_reasons']}; think closed: {s['think_closed']}; accuracy (finished, parsed): {_pct(s['accuracy'])}; tokens excluded as incomplete UTF-8: {s['excluded_tokens']}")
     lines.append(f"- length tokens: mean {s['length']['mean']}, median {s['length']['median']}, p90 {s['length']['p90']}, max {s['length']['max']}")
     lines.append(f"- **per-token non-canonical rate: {_pct(s['per_token_rate'])}** ({s['nc_tokens']} / {s['tokens']}), {s['spans']} spans, {s['spans_per_1k_tokens']} spans/1k tokens, {s['rollouts_with_nc']}/{s['rollouts']} rollouts with ≥1")
     lines.append(f"- think: {_pct(s['think']['rate'])} ({s['think']['nc']} / {s['think']['tokens']}); answer: {_pct(s['answer']['rate'])} ({s['answer']['nc']} / {s['answer']['tokens']})")

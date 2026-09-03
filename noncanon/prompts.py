@@ -25,7 +25,7 @@ from datasets import load_dataset
 from huggingface_hub import HfFileSystem
 
 PROMPT_DIR = Path("prompts")
-PREFIX_CHARS = 80
+PREFIX_CHARS = 80  # of the alphanumeric-only normalized text
 TRAINING_SETS = {
     "Dolci-RL-Zero-Math-7B": "datasets/allenai/Dolci-RL-Zero-Math-7B/data/*.parquet",
     "Dolci-Think-RL-7B": "datasets/allenai/Dolci-Think-RL-7B/data/*.parquet",
@@ -33,9 +33,12 @@ TRAINING_SETS = {
 
 
 def normalize(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text)
+    """Lowercase alphanumerics only: LaTeX spacing and punctuation differ
+    between copies of the same problem, so whitespace-collapsing alone misses
+    matches."""
+    text = unicodedata.normalize("NFKC", text).lower()
     text = re.sub(r"^\s*user:\s*", "", text)  # Dolci-Think-RL stores "user: <problem>"
-    return re.sub(r"\s+", " ", text.lower()).strip()
+    return re.sub(r"[^a-z0-9]", "", text)
 
 
 def training_prompts() -> dict[str, list[str]]:

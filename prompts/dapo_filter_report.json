@@ -7,12 +7,12 @@
     "Dolci-Think-RL-7B": 102014
   },
   "matched": {
-    "Dolci-RL-Zero-Math-7B:exact": 10292,
-    "Dolci-Think-RL-7B:prefix": 38,
-    "Dolci-RL-Zero-Math-7B:prefix": 176,
-    "Dolci-Think-RL-7B:exact": 49
+    "Dolci-RL-Zero-Math-7B:exact": 9886,
+    "Dolci-Think-RL-7B:exact": 52,
+    "Dolci-Think-RL-7B:prefix": 35,
+    "Dolci-RL-Zero-Math-7B:prefix": 154
   },
-  "duplicates_within_dapo": 131,
+  "duplicates_within_dapo": 735,
   "non_integer_answer": 0,
-  "kept": 3430
+  "kept": 3254
 }
