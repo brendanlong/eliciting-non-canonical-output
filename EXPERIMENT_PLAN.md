@@ -427,6 +427,15 @@ After that section: a cheap comparison in another family (Llama or Qwen)
 and possibly the chat prompts, to see whether the pattern is
 model-specific or task-specific.
 
+Added after the Think DAPO cell (Brendan, 2026-09-03): suspected
+mechanism for RL final sitting below DPO — RL has no pressure to stay
+canonical exactly, but it reduces entropy, which has the same effect as
+lower temperature or truncation.
+
+15. **Think RL final at the recommended settings (temperature 0.6,
+    top-p 0.95) on DAPO 500**, chosen because it is the lowest-rate and
+    most frontier-like checkpoint: does the rate hit exactly 0?
+
 ## Follow-ups under consideration
 
 - **Downstream divergence at non-canonical spans** (added 2026-09-03).

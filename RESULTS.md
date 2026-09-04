@@ -342,6 +342,31 @@ AIME, RL-Zero-Math − Think-DPO: headline +0.0096 pp, per-token z = 11.9
 (p < 1e-15), per-rollout p < 0.0002; segmentation only +0.0115 pp,
 z = 14.6, per-rollout p < 0.0002. (The AIME Think cell is still running.)
 
+### Next-token distribution sharpness, DAPO 500 (from the stored top-10 logprobs)
+
+Computed over every generated position; p_top1 is the raw probability of
+the model's most likely token, entropy is over the top-10 renormalized.
+
+| checkpoint | positions | mean p_top1 | frac p_top1 < 0.5 | frac p_top1 < 0.9 | mean mass outside top-1 | mean entropy | entropy p90 | frac entropy > 1 |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|
+| Think RL final | 4,649,943 | 0.858 | 8.8% | 36.9% | 0.142 | 0.379 | 1.16 | 13.9% |
+| Think-DPO | 4,092,746 | 0.874 | 7.9% | 32.6% | 0.126 | 0.338 | 1.10 | 12.2% |
+| RL-Zero-Math | 3,133,206 | 0.864 | 8.8% | 34.8% | 0.136 | 0.368 | 1.18 | 14.2% |
+
+(Think RL final has the highest average entropy and tail mass of the three
+and the lowest non-canonical rate; DPO the lowest entropy and the middle
+rate.)
+
+### Launched 2026-09-03: Think RL final at recommended settings, DAPO 500 only
+
+Per plan prediction 15.
+
+```
+sky launch -c nc-think-rec skypilot/run.yaml --gpus B200:1 --retry-until-up -i 20 --down -y -d --env HF_TOKEN \
+    --env MODEL=allenai/Olmo-3-7B-Think --env RUN_NAME=think-main-recommended --env ARMS=recommended \
+    --env PROMPTS="prompts/dapo_sample500.jsonl"
+```
+
 ### Launched 2026-09-03: Think-SFT and RL-Zero-Math step_300, DAPO 500 only
 
 Per plan predictions 13 and 14. Same task and settings; DAPO only.
