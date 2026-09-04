@@ -17,17 +17,15 @@ subset of layers) and the cosine distance of the residual stream at those
 layers. Spans with another event inside the following window are skipped
 so the measured divergence is the span's own.
 
-Control: in rollouts of the same cell with no event, a random alphabetic
-word token at a matched depth is split into two in-vocabulary pieces (an
-arbitrary non-canonical tokenization of the same text) and measured the
-same way. Rows are written to ``out/divergence/<run>/<arm>.parquet``.
+Rows are written to ``out/divergence/<run>/<arm>.parquet``. Beyond the
+span the two sequences differ only in position index (the canonical span
+usually has a different token count), which sets a small floor far from
+the span.
 
 ``contagion``: for consecutive spans in a rollout, the log-probability of
 the second span's first emitted token under the context with the first
 span as emitted (A) versus canonically re-tokenized (B); Δ > 0 means the
-first span's tokenization makes the second more likely. Control: the
-ordinary emitted token at a matched distance after the span in
-single-span rollouts, which carries the same one-token position shift.
+first span's tokenization makes the second more likely.
 """
 
 from __future__ import annotations
@@ -110,61 +108,6 @@ def build_pair(an: Analyzer, prompt_ids: list[int], ids: list[int], pos: int, sp
         "a": prompt_ids + prefix + tail, "b": prompt_ids + prefix + canon, "offset": offset, "span_end_a": span_len,
         "span_end_byte": span_end_byte, "prefix_tokens": len(prefix), "prefix_truncated": False, "bounds": bounds,
     }
-
-
-def split_word(an: Analyzer, t: int, rng: random.Random) -> list[int] | None:
-    """Two in-vocabulary tokens whose bytes concatenate to token ``t``'s bytes (an arbitrary non-canonical tokenization)."""
-    b = an.token_bytes([t])[0]
-    if len(b) < 5 or not b.decode(errors="replace").strip().isalpha():
-        return None
-    vocab = an.tok.get_vocab()
-    from transformers.models.gpt2.tokenization_gpt2 import bytes_to_unicode
-    enc = bytes_to_unicode()
-    to_str = lambda bs: "".join(enc[x] for x in bs)
-    cuts = list(range(2, len(b) - 1))
-    rng.shuffle(cuts)
-    for c in cuts:
-        left, right = to_str(b[:c]), to_str(b[c:])
-        if left in vocab and right in vocab:
-            return [vocab[left], vocab[right]]
-    return None
-
-
-def control_pairs(an: Analyzer, records: list[dict], depths: list[int], n: int, after: int, seed: int) -> list[tuple[dict, dict]]:
-    """Arbitrary re-tokenizations at span-matched depths in event-free rollouts: A = the split, B = the original tokens."""
-    rng = random.Random(seed)
-    out, used = [], set()
-    tries = 0
-    while len(out) < n and tries < 20 * n:
-        tries += 1
-        depth = rng.choice(depths)
-        # Depth-matched: draw the control from rollouts long enough to hold the span depth (event-free
-        # rollouts are shorter on average; clamping the depth to a short rollout would bias controls shallow).
-        long_enough = [r for r in records if len(r["token_ids"]) >= depth + 64]
-        if not long_enough:
-            continue
-        rec = rng.choice(long_enough)
-        ids = list(rec["token_ids"])
-        pos = max(1, min(len(ids) - 8, depth + rng.randint(-24, 24)))
-        for p in range(pos, min(pos + 48, len(ids) - 4)):
-            if ids[p] in an.special or (rec["prompt_id"], rec["sample"], p) in used:
-                continue
-            pieces = split_word(an, ids[p], rng)
-            if pieces is None:
-                continue
-            end = min(len(ids), p + 1 + after)
-            tail_a, tail_b = pieces + ids[p + 1:end], ids[p:end]
-            bytes_a, bytes_b = an.token_bytes(tail_a), an.token_bytes(tail_b)
-            bounds = shared_boundaries(bytes_a, bytes_b, len(bytes_b[0]))
-            if not bounds:
-                continue
-            used.add((rec["prompt_id"], rec["sample"], p))
-            prompt_ids = list(rec["prompt_token_ids"])
-            pair = {"a": prompt_ids + ids[:p] + tail_a, "b": prompt_ids + ids[:p] + tail_b, "offset": len(prompt_ids) + p, "span_end_a": len(pieces),
-                    "span_end_byte": len(bytes_b[0]), "prefix_tokens": p, "prefix_truncated": False, "bounds": bounds}
-            out.append((pair, {"prompt_id": rec["prompt_id"], "sample": rec["sample"], "pos": p, "shape": "control-split", "emitted": pieces, "canonical": [ids[p]]}))
-            break
-    return out
 
 
 # --- model (GPU) --------------------------------------------------------------------
@@ -263,22 +206,17 @@ def run_cell(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: P
             continue
         rows.extend(measure(m, pair, e, "span"))
     n_spans = len({(r["prompt_id"], r["sample"], r["span_pos"]) for r in rows})
-    clean = [r for k, r in records.items() if k not in spans and r["finish_reason"] == "stop"]
-    depths = [e["pos"] for _, e in candidates] or [256]
-    for pair, meta in control_pairs(an, clean, depths, n_spans, after, seed):
-        rows.extend(measure(m, pair, meta, "control"))
     out_dir.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pylist(rows, schema=SCHEMA), out_dir / f"{arm}.parquet")
     meta = {"model": model_name, "revision": revision, "run_dir": str(run_dir), "arm": arm, "prefix": "full", "after": after, "seed": seed,
-            "candidate_spans": len(candidates), "measured_spans": n_spans, "controls": len({(r['prompt_id'], r['sample'], r['span_pos']) for r in rows if r['kind'] == 'control'}),
-            "skipped": dict(skipped), "lens_layers": m.layers, "rows": len(rows)}
+            "candidate_spans": len(candidates), "measured_spans": n_spans, "skipped": dict(skipped), "lens_layers": m.layers, "rows": len(rows)}
     (out_dir / f"{arm}.meta.json").write_text(json.dumps(meta, indent=2))
     print(json.dumps(meta, indent=2))
 
 
 # --- summary (CPU) ------------------------------------------------------------------
 def load_table(d: Path, arm: str) -> dict[str, np.ndarray]:
-    """Rows of one cell, with duplicate measurements dropped (the 2026-09-04 run drew controls with replacement)."""
+    """Rows of one cell, duplicates dropped."""
     t = pq.read_table(d / f"{arm}.parquet")
     keys = list(zip(*(t.column(c).to_pylist() for c in ("kind", "prompt_id", "sample", "span_pos", "distance_tokens"))))
     seen, keep = set(), []
@@ -305,7 +243,7 @@ def summarize(dirs: list[str], arm: str) -> None:
         label, _, d = spec.rpartition("=")
         d = Path(d); label = label or d.name
         c = load_table(d, arm)
-        for kind in ("span", "control"):
+        for kind in ("span",):
             m = c["kind"] == kind
             if not m.any():
                 continue
@@ -326,7 +264,7 @@ def summarize_lens(dirs: list[str], arm: str, max_distance: int = 16) -> None:
         label, _, d = spec.rpartition("=")
         d = Path(d); label = label or d.name
         c = load_table(d, arm)
-        for kind in ("span", "control"):
+        for kind in ("span",):
             m = (c["kind"] == kind) & (c["distance_tokens"] <= max_distance)
             if not m.any():
                 continue
@@ -378,11 +316,9 @@ def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_d
         if e["file"].startswith(arm):
             spans[(e["prompt_id"], e["sample"])].append(e)
     rng = random.Random(seed)
-    pairs, singles, skipped = [], [], Counter()
+    pairs, skipped = [], Counter()
     for key, es in spans.items():
         es.sort(key=lambda e: e["pos"])
-        if len(es) == 1 and es[0]["canonical"] is not None:
-            singles.append((key, es[0]))
         for e1, e2 in zip(es, es[1:]):  # consecutive events: nothing non-canonical between them
             if e1["canonical"] is None or e2["canonical"] is None:
                 skipped["fragment"] += 1
@@ -409,27 +345,10 @@ def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_d
         r = measure_contagion(m, pair, target, canonical_id)
         rows.append({"kind": "pair", "prompt_id": key[0], "sample": int(key[1]), "first_pos": e1["pos"], "target_pos": e2["pos"], "gap": e2["pos"] - (e1["pos"] + len(e1["emitted"])),
                      "same_text": "".join(e1["emitted"]) == "".join(e2["emitted"]), "target_id": target, "canonical_id": canonical_id, **r})
-    gaps = [r["gap"] for r in rows] or [64]
-    n_controls, tries = 0, 0
-    while singles and n_controls < len(rows) and tries < 20 * len(rows):
-        tries += 1
-        key, e1 = rng.choice(singles)
-        rec = records[key]
-        ids = list(rec["token_ids"])
-        p2 = e1["pos"] + len(e1["emitted"]) + rng.choice(gaps)
-        if p2 >= len(ids) or ids[p2] in an.special:
-            continue
-        pair = build_contagion_pair(an, list(rec["prompt_token_ids"]), ids, e1["pos"], p2)
-        if pair is None:
-            continue
-        r = measure_contagion(m, pair, ids[p2], ids[p2])
-        rows.append({"kind": "control", "prompt_id": key[0], "sample": int(key[1]), "first_pos": e1["pos"], "target_pos": p2, "gap": p2 - (e1["pos"] + len(e1["emitted"])),
-                     "same_text": False, "target_id": ids[p2], "canonical_id": ids[p2], **r})
-        n_controls += 1
     out_dir.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pylist(rows, schema=CONTAGION_SCHEMA), out_dir / f"{arm}.contagion.parquet")
     meta = {"model": model_name, "revision": revision, "run_dir": str(run_dir), "arm": arm, "prefix": "full", "max_gap": max_gap, "seed": seed,
-            "candidate_pairs": len(pairs), "measured_pairs": sum(r["kind"] == "pair" for r in rows), "controls": n_controls, "single_span_rollouts": len(singles), "skipped": dict(skipped)}
+            "candidate_pairs": len(pairs), "measured_pairs": sum(r["kind"] == "pair" for r in rows), "skipped": dict(skipped)}
     (out_dir / f"{arm}.contagion.meta.json").write_text(json.dumps(meta, indent=2))
     print(json.dumps(meta, indent=2))
 
@@ -447,7 +366,7 @@ def summarize_contagion(dirs: list[str], arm: str) -> None:
         cols = {c: t.column(c).to_numpy(zero_copy_only=False) for c in t.column_names}
         delta = cols["logp_a"] - cols["logp_b"]
         delta_c = cols["logp_a_canonical"] - cols["logp_b_canonical"]
-        groups = [("pairs, same text", (cols["kind"] == "pair") & cols["same_text"]), ("pairs, different text", (cols["kind"] == "pair") & ~cols["same_text"]), ("control (ordinary token at a matched distance)", cols["kind"] == "control")]
+        groups = [("same text", (cols["kind"] == "pair") & cols["same_text"]), ("different text", (cols["kind"] == "pair") & ~cols["same_text"])]
         for name, mask in groups:
             if mask.sum() == 0:
                 continue

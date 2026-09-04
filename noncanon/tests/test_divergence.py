@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from noncanon.divergence import build_pair, canonical_suffix, canonical_tail, shared_boundaries, split_word
+from noncanon.divergence import build_pair, canonical_suffix, canonical_tail, shared_boundaries
 from noncanon.metrics import Analyzer
 
 
@@ -56,14 +56,6 @@ def test_canonical_suffix_and_tail_splice(an):
     prefix = enc(an, "Prefix text") + light + house  # ends with a non-canonical pair: the suffix stops before it
     assert canonical_suffix(an, prefix) == house  # stops before the non-canonical " light"+"house" pair
     assert canonical_tail(an, enc(an, "Prefix text"), light + house + enc(an, " more")) == enc(an, " lighthouse more")
-
-
-def test_split_word_gives_two_vocab_tokens_with_the_same_bytes(an):
-    t = enc(an, " tokenization")[0]
-    pieces = split_word(an, t, random.Random(0))
-    assert pieces is not None and len(pieces) == 2 and pieces != [t]
-    assert b"".join(an.token_bytes(pieces)) == an.token_bytes([t])[0]
-    assert split_word(an, enc(an, " a")[0], random.Random(0)) is None
 
 
 def test_build_pair_rejects_a_tail_cut_inside_a_character(an):
