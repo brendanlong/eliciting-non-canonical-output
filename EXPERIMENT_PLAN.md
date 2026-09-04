@@ -478,6 +478,23 @@ Not obviously distinguishable with the current data. An alternative is a
 recipe difference: an entropy bonus or other setting that makes the Zero
 run sample more widely than the Think RL stage.
 
+*Notes from Claude (from the OLMo 3 report, arXiv 2512.13961v2):* both the
+Think RL stage and RL-Zero use the same OlmoRL objective (GRPO with
+token-level loss, truncated importance sampling, clip-higher, no advantage
+std normalization, and **no KL loss**); the report never mentions an
+entropy bonus. Rollouts during RL are sampled at temperature 1.0 / top-p
+1.0 for both. RL-Zero 3.0 (the checkpoints used here) trained with a 12k
+completion length and masked truncated sequences; 3.1 raised it to 16k and
+stopped masking. The RL-Zero math prompt is the fixed instruction "Solve
+the following math problem step by step. The last line of your response
+should be the answer to the problem in form Answer: $Answer", which is
+what its chat template applies, so our DAPO cells used its training
+format. On the starting-entropy premise: the report itself observes that
+the DPO model "does display lower entropy" than SFT while having higher
+pass@K on AIME, which matches the measured top-10 entropies here (SFT
+0.615, DPO 0.338). Table 49 (per-run learning rate, batch, steps) is not
+text-extractable from the HTML; check the PDF if the exact dose matters.
+
 ## Follow-ups under consideration
 
 - **Downstream divergence at non-canonical spans** (added 2026-09-03).
