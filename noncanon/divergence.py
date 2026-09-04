@@ -238,22 +238,35 @@ def run_cell(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: P
 
 
 # --- summary (CPU) ------------------------------------------------------------------
+def load_table(d: Path, arm: str) -> dict[str, np.ndarray]:
+    t = pq.read_table(d / f"{arm}.parquet")
+    cols = {c: t.column(c).to_numpy(zero_copy_only=False) for c in ("kind", "prompt_id", "sample", "span_pos", "distance_tokens", "kl_ab", "top1_agree")}
+    cols["lens_layers"] = t.column("lens_layers")[0].as_py() if len(t) else []
+    cols["lens_kl"] = np.array(t.column("lens_kl").to_pylist(), dtype=float) if len(t) else np.zeros((0, 0))
+    cols["hidden_cos_dist"] = np.array(t.column("hidden_cos_dist").to_pylist(), dtype=float) if len(t) else np.zeros((0, 0))
+    return cols
+
+
+def n_spans(c: dict[str, np.ndarray], mask: np.ndarray) -> int:
+    return len(set(zip(c["prompt_id"][mask], c["sample"][mask], c["span_pos"][mask])))
+
+
 def summarize(dirs: list[str], arm: str) -> None:
     print("| cell | kind | spans | boundaries | " + " | ".join(f"KL(A‖B) at {lo}–{hi if hi < 10**9 else '∞'} tokens after: mean / median / top-1 differs" for lo, hi in DISTANCE_BINS) + " |")
     print("|---|---|--:|--:|" + "---|" * len(DISTANCE_BINS))
     for spec in dirs:
         label, _, d = spec.rpartition("=")
         d = Path(d); label = label or d.name
-        t = pq.read_table(d / f"{arm}.parquet").to_pandas()
+        c = load_table(d, arm)
         for kind in ("span", "control"):
-            x = t[t.kind == kind]
-            if not len(x):
+            m = c["kind"] == kind
+            if not m.any():
                 continue
             cells = []
             for lo, hi in DISTANCE_BINS:
-                y = x[(x.distance_tokens >= lo) & (x.distance_tokens <= hi)]
-                cells.append(f"{y.kl_ab.mean():.3f} / {y.kl_ab.median():.4f} / {100 * (1 - y.top1_agree.mean()):.1f}% (n={len(y)})" if len(y) else "—")
-            print(f"| {label} | {kind} | {x.groupby(['prompt_id', 'sample', 'span_pos']).ngroups} | {len(x)} | " + " | ".join(cells) + " |")
+                y = m & (c["distance_tokens"] >= lo) & (c["distance_tokens"] <= hi)
+                cells.append(f"{c['kl_ab'][y].mean():.3f} / {np.median(c['kl_ab'][y]):.4f} / {100 * (1 - c['top1_agree'][y].mean()):.1f}% (n={y.sum()})" if y.any() else "—")
+            print(f"| {label} | {kind} | {n_spans(c, m)} | {m.sum()} | " + " | ".join(cells) + " |")
 
 
 def summarize_lens(dirs: list[str], arm: str, max_distance: int = 16) -> None:
@@ -262,15 +275,13 @@ def summarize_lens(dirs: list[str], arm: str, max_distance: int = 16) -> None:
     for spec in dirs:
         label, _, d = spec.rpartition("=")
         d = Path(d); label = label or d.name
-        t = pq.read_table(d / f"{arm}.parquet").to_pandas()
+        c = load_table(d, arm)
         for kind in ("span", "control"):
-            x = t[(t.kind == kind) & (t.distance_tokens <= max_distance)]
-            if not len(x):
+            m = (c["kind"] == kind) & (c["distance_tokens"] <= max_distance)
+            if not m.any():
                 continue
-            layers = x.lens_layers.iloc[0]
-            kl = np.stack(x.lens_kl.to_numpy()).mean(0)
-            cos = np.stack(x.hidden_cos_dist.to_numpy()).mean(0)
-            print(f"| {label} | {kind} | " + "; ".join(f"L{l}: {k:.3f} / {c:.4f}" for l, k, c in zip(layers, kl, cos)) + " |")
+            kl, cos = c["lens_kl"][m].mean(0), c["hidden_cos_dist"][m].mean(0)
+            print(f"| {label} | {kind} | " + "; ".join(f"L{l}: {k:.3f} / {x:.4f}" for l, k, x in zip(c["lens_layers"], kl, cos)) + " |")
 
 
 def fetch(run: str, prompt_set: str, repo: str) -> None:
