@@ -322,6 +322,26 @@ headline +0.0035 pp, per-token z = 3.0 (p = 0.002), per-rollout
 permutation p = 0.41; segmentation only +0.0036 pp, z = 3.1 (p = 0.002),
 per-rollout p = 0.38. The Think and DPO AIME cells are still running.
 
+### AIME 2024/2025, Think-DPO
+
+480 rollouts: 434 stop, 46 length; think closed 433 / 480; accuracy
+(finished, parsed) 80.7%; excluded 165 tokens incomplete UTF-8, 166 cut
+last word. Length: mean 17,384, median 14,779, p90 32,539, max 32,767.
+Headline rate **0.0177%** (1,474 of 8,344,375 units; 757 spans, 157
+fragments of which 156 standalone; 330 / 480 rollouts with ≥1 event; shapes
+whitespace 301 / alphabetic 222 / symbolic 234); segmentation only 0.0158%
+(1,318 / 8,344,219). Think 1,422 / 7,961,992 (0.0179%), answer 52 / 382,429
+(0.0136%). Entropy 0.393 all positions, 0.967 at non-canonical positions.
+Rollout-bootstrap 95% CI (headline) 0.0158–0.0198%.
+
+Within-model AIME − DAPO for DPO: headline −0.0010 pp, per-token z = 1.2
+(p = 0.24), per-rollout p = 0.55; segmentation only −0.0002 pp, z = 0.3
+(p = 0.78), per-rollout p = 0.88.
+
+AIME, RL-Zero-Math − Think-DPO: headline +0.0096 pp, per-token z = 11.9
+(p < 1e-15), per-rollout p < 0.0002; segmentation only +0.0115 pp,
+z = 14.6, per-rollout p < 0.0002. (The AIME Think cell is still running.)
+
 ### Launched 2026-09-03: Think-SFT and RL-Zero-Math step_300, DAPO 500 only
 
 Per plan predictions 13 and 14. Same task and settings; DAPO only.
