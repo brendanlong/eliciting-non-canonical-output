@@ -252,7 +252,8 @@ another 30.
 tests overstate certainty). Headline rule (fragments counted):
 rollout-bootstrap 95% CIs DPO 0.0164–0.0211%, Zero 0.0189–0.0297%;
 permutation test on the pooled rate with rollouts permuted: Zero − DPO =
-0.0052 pp, two-sided p = 0.057. Segmentation only: CIs DPO 0.0142–0.0179%,
+0.0052 pp, two-sided p = 0.053 (`noncanon.compare`; an earlier inline run
+of the same test gave 0.057 and 0.055 from a different RNG stream). Segmentation only: CIs DPO 0.0142–0.0179%,
 Zero 0.0189–0.0296%; Zero − DPO = 0.0077 pp, p = 0.0016.
 Rollouts with ≥1 span: 50.2% vs 58.0%, z = 2.5. Spans per rollout: DPO mean
 0.81, variance 1.15, max 8; Zero mean 1.09, variance 8.63, max 52. Median
@@ -292,7 +293,7 @@ test with rollouts as units, 5,000 permutations, so p < 0.0002 reads as
 |---|--:|---|--:|--:|---|--:|
 | Think RL final − Think-DPO | −0.0152 pp | 21.8, <1e-15 | <0.0002 | −0.0127 pp | 19.4, <1e-15 | <0.0002 |
 | Think RL final − RL-Zero-Math | −0.0203 pp | 25.8, <1e-15 | <0.0002 | −0.0204 pp | 25.9, <1e-15 | <0.0002 |
-| RL-Zero-Math − Think-DPO | +0.0052 pp | 4.8, 1.9e-6 | 0.055 | +0.0077 pp | 7.4, 1.9e-13 | 0.0016 |
+| RL-Zero-Math − Think-DPO | +0.0052 pp | 4.8, 1.9e-6 | 0.053 | +0.0077 pp | 7.4, 1.9e-13 | 0.0016 |
 
 Rollout-bootstrap 95% CIs, headline rule: Think RL final 0.0019–0.0059%,
 Think-DPO 0.0164–0.0210%, RL-Zero-Math 0.0189–0.0297%.
@@ -430,3 +431,62 @@ RL-Zero-Math cells above are step 2000, and step_300 is the same run at
 15% of its length.
 Compliance and accuracy of step_300 are to be checked before its rate is
 compared.
+
+## Reproduction
+
+Every number above comes from these commands, run from a clean checkout
+(`uv sync --group dev`; a GPU is needed only for generation). Artifacts for
+each cell are on `brendanlong/noncanonical-post-training` under the run
+name, so the analysis steps can be run without regenerating.
+
+Prompt sets:
+
+```
+uv run python -m noncanon.prompts dapo --sample 500   # prompts/dapo_heldout.jsonl, dapo_sample500.jsonl, filter report
+uv run python -m noncanon.prompts aime                # prompts/aime_2024_2025.jsonl
+```
+
+Generation, one launch per cell (RunPod B200 via SkyPilot; `--gpus A100-80GB:1`
+works too, at about a quarter of the throughput). `PROMPTS` entries take an
+optional `:n` samples-per-prompt suffix; `ARMS` is `untruncated` (temperature
+1, top-p 1) or `recommended` (the checkpoint's `generation_config.json`):
+
+| cell | command |
+|---|---|
+| pilot | `sky launch -c noncanon-pilot skypilot/pilot.yaml -i 20 --down -y -d --env HF_TOKEN` (task since renamed `skypilot/run.yaml`; `PROMPTS=prompts/dapo_pilot50.jsonl ARMS=recommended,untruncated`) |
+| think-main (DAPO + AIME) | `sky launch -c nc-think-b200 skypilot/run.yaml --gpus B200:1 -i 20 --down -y -d --env HF_TOKEN --env MODEL=allenai/Olmo-3-7B-Think --env RUN_NAME=think-main` |
+| think-dpo, DAPO | same with `MODEL=allenai/Olmo-3-7B-Think-DPO RUN_NAME=think-dpo` (its AIME half was relaunched separately with `--env PROMPTS="prompts/aime_2024_2025.jsonl:8"` after the metrics failure) |
+| rlzero-math, DAPO | same with `MODEL=allenai/Olmo-3-7B-RL-Zero-Math RUN_NAME=rlzero-math` (AIME half relaunched the same way) |
+| think-sft, DAPO | `... --env MODEL=allenai/Olmo-3-7B-Think-SFT --env RUN_NAME=think-sft --env PROMPTS="prompts/dapo_sample500.jsonl"` |
+| rlzero-math-step300, DAPO | `... --env MODEL=allenai/Olmo-3-7B-RL-Zero-Math --env REVISION=step_300 --env RUN_NAME=rlzero-math-step300 --env PROMPTS="prompts/dapo_sample500.jsonl"` |
+| think-main-recommended, DAPO | `... --env MODEL=allenai/Olmo-3-7B-Think --env RUN_NAME=think-main-recommended --env ARMS=recommended --env PROMPTS="prompts/dapo_sample500.jsonl"` |
+| think-dpo-recommended, DAPO | `... --env MODEL=allenai/Olmo-3-7B-Think-DPO --env RUN_NAME=think-dpo-recommended --env ARMS=recommended --env PROMPTS="prompts/dapo_sample500.jsonl"` |
+
+Metrics for a cell (recomputes everything from the stored token IDs; the
+on-box copies uploaded by early runs were produced by earlier versions of
+`metrics.py` and are superseded by rerunning this):
+
+```
+uv run python -m noncanon.metrics --tokenizer allenai/Olmo-3-7B-Think --records out/<run>/<prompt set>/*.parquet --out-dir out/<run>/<prompt set>/metrics
+```
+
+Comparisons per the analysis specification (rollout-bootstrap CIs, per-token
+z, per-rollout permutation; both conventions):
+
+```
+uv run python -m noncanon.compare out/think-dpo/dapo_sample500 out/think-main/dapo_sample500
+uv run python -m noncanon.compare out/think-dpo/dapo_sample500 out/rlzero-math/dapo_sample500
+uv run python -m noncanon.compare out/rlzero-math/dapo_sample500 out/think-main/dapo_sample500
+uv run python -m noncanon.compare out/rlzero-math/dapo_sample500 out/rlzero-math/aime_2024_2025   # within-model
+uv run python -m noncanon.compare out/think-dpo/dapo_sample500 out/think-dpo/aime_2024_2025
+uv run python -m noncanon.compare out/think-dpo/aime_2024_2025 out/rlzero-math/aime_2024_2025
+```
+
+Tail depth, emitted-token ranks and bare-space spans:
+
+```
+uv run python -m noncanon.tail --tokenizer allenai/Olmo-3-7B-Think out/think-main/dapo_sample500 out/think-dpo/dapo_sample500 out/rlzero-math/dapo_sample500
+```
+
+The prompt-set overlap with the OLMo-3 RL training data is computed inside
+`noncanon.prompts dapo` and written to `prompts/dapo_filter_report.json`.
