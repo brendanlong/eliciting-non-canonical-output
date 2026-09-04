@@ -439,10 +439,16 @@ step-2000 `main` checkpoint, 15% of the way through). 500 rollouts, all
 stop; accuracy (finished, parsed) 87.4% (step 2000: 89.6%); no excluded
 tokens. Length: mean 6,348, median 5,154, p90 11,991, max 24,304.
 
-| checkpoint | units | non-canonical | rate | rollouts with ≥1 event | spans | span shapes (whitespace / alphabetic / symbolic) |
-|---|--:|--:|--:|--:|--:|---|
-| step_300 | 3,173,716 | 270 | 0.0085% | 73 / 500 | 166 | 9 / 106 / 51 |
-| step 2000 (`main`) | 3,132,357 | 745 | 0.0238% | 292 / 500 | 543 | 4 / 176 / 363 |
+| checkpoint | finished (stop / length) | verified correct | mean / median tokens | units | non-canonical | rate | rollouts with ≥1 event | spans | span shapes (whitespace / alphabetic / symbolic) |
+|---|---|--:|---|--:|--:|--:|--:|--:|---|
+| step_300 | 500 / 0 | 87.4% (436 / 499 parsed) | 6,348 / 5,154 | 3,173,716 | 270 | 0.0085% | 73 / 500 | 166 | 9 / 106 / 51 |
+| step 2000 (`main`) | 499 / 1 | 89.6% (446 / 498 parsed) | 6,265 / 5,360 | 3,132,357 | 745 | 0.0238% | 292 / 500 | 543 | 4 / 176 / 363 |
+
+By outcome (rate over units): step_300 correct 0.0092% (436 rollouts),
+incorrect 0.0064% (63), unparsed 0 (1); step 2000 correct 0.0219% (446),
+incorrect 0.0332% (52), truncated 0 (1), unparsed 0.0145% (1). Both
+checkpoints finish, attempt and mostly solve the problems at the same
+rollout lengths, so the rate difference is not a compliance difference.
 
 Rollout-bootstrap 95% CI for step_300: 0.0043–0.0161%. step 2000 − step
 300 = +0.0153 pp; per-token z = 15.1 (p < 1e-15); per-rollout permutation
