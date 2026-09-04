@@ -100,6 +100,8 @@ class Analyzer:
         # and the other control tokens are "added tokens" not flagged special.
         self.special = set(self.tok.all_special_ids) | set(self.tok.added_tokens_decoder)
         self.vocab_size = len(self.tok)  # len() on a fast tokenizer rebuilds the vocab each call; cache it
+        # is_oov() is a range test; it is only right if every named id, added tokens included, sits below len().
+        assert max(self.tok.added_tokens_decoder, default=-1) < self.vocab_size, "non-contiguous vocabulary"
 
     def token_bytes(self, ids: list[int]) -> list[bytes]:
         """Exact bytes of each token (byte-level BPE maps one char per byte).
@@ -162,10 +164,10 @@ class Analyzer:
             ids = ids[:cut]
         # Out-of-vocabulary ids are not text: they end a run, are excluded from
         # the measurement, and are reported as their own fragment class.
-        oov = {i for i, t in enumerate(ids) if self.is_oov(t)}
-        for i in sorted(oov):
-            r.fragments.append((i, [ids[i]]))
-            r.excluded.add(i)
+        oov = [i for i, t in enumerate(ids) if self.is_oov(t)]
+        for group in consecutive_groups(oov):  # a run of OOV ids is one event, like a run of undecodable bytes
+            r.fragments.append((group[0], [ids[i] for i in group]))
+        r.excluded.update(oov)
         r.excluded_oov = len(oov)
         for offset, run in ordinary_runs(ids, self.special | {ids[i] for i in oov}):
             kept = set()
@@ -204,7 +206,6 @@ class Analyzer:
         measured = [i for i, t in enumerate(ids) if t not in self.special and i not in r.excluded]
         ordinal = {i: k for k, i in enumerate(measured)}
         pieces = {i: self.piece(ids[i]) for i in measured}
-        all_bytes = self.token_bytes(ids)  # recomputed: OOV ids contribute no bytes
         classes = {i: token_class(pieces[i]) for i in measured}
 
         nc_emitted = [i for s in r.spans for i in range(s.start, s.start + len(s.emitted))]

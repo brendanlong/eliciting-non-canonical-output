@@ -2,6 +2,7 @@
 
     uv run python -m noncanon.prompts dapo --sample 500 # prompts/dapo_heldout.jsonl (+ fixed-seed sample)
     uv run python -m noncanon.prompts aime              # prompts/aime_2024_2025.jsonl
+    uv run python -m noncanon.prompts overlap prompts/dapo_sample500.jsonl allenai/RLVR-MATH ...  # same rule, other RL sets
 
 DAPO: ``open-r1/DAPO-Math-17k-Processed`` (English config) minus every problem
 that appears in the OLMo-3 RL training sets (``allenai/Dolci-RL-Zero-Math-7B``,
@@ -133,6 +134,22 @@ def build_aime() -> None:
     print(f"wrote {len(rows)} AIME problems")
 
 
+def user_turn(row: dict) -> str:
+    """Prompt text of a row from a chat-format RL dataset (first user message), or its ``prompt`` column."""
+    if "messages" in row:
+        return next(m["content"] for m in row["messages"] if m["role"] == "user")
+    return row["prompt"]
+
+
+def report_overlap(prompt_file: Path, datasets: list[str]) -> None:
+    """How many prompts of ``prompt_file`` appear in other RL datasets, by the DAPO filter's rule."""
+    training = {name: [user_turn(r) for r in load_dataset(name, split="train")] for name in datasets}
+    filt = TrainingFilter(training)
+    rows = [json.loads(line) for line in prompt_file.open()]
+    matches = Counter(m for r in rows if (m := filt.match(r["problem"])))
+    print(json.dumps({"prompts": len(rows), "rows": {n: len(t) for n, t in training.items()}, "matches": dict(matches)}, indent=2))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -140,8 +157,16 @@ def main() -> None:
     d.add_argument("--sample", type=int, default=None, help="also write a fixed-seed random sample of this size")
     d.add_argument("--seed", type=int, default=0)
     sub.add_parser("aime")
+    o = sub.add_parser("overlap", help="count prompts of a file that appear in other RL datasets (same matching rule)")
+    o.add_argument("prompt_file", type=Path)
+    o.add_argument("datasets", nargs="+", help="HF dataset names with a `messages` or `prompt` column")
     args = ap.parse_args()
-    build_dapo(args.sample, args.seed) if args.cmd == "dapo" else build_aime()
+    if args.cmd == "dapo":
+        build_dapo(args.sample, args.seed)
+    elif args.cmd == "aime":
+        build_aime()
+    else:
+        report_overlap(args.prompt_file, args.datasets)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,8 @@
 # To queue several checkpoints on one box (cheap, short-output models), set
 # JOBS to a space-separated list of "model:revision:run_name" entries; it
 # overrides MODEL/REVISION/RUN_NAME. Each checkpoint is generated, measured
-# and uploaded before the next starts, so a failure loses at most one.
+# and uploaded before the next starts; a generation or upload failure stops
+# the queue (later checkpoints are not attempted), a metrics failure does not.
 
 resources:
   infra: runpod
@@ -49,6 +50,7 @@ run: |
   [ -n "$JOBS" ] || JOBS="$MODEL:$REVISION:$RUN_NAME"
   for job in $JOBS; do
     IFS=: read -r MODEL REVISION RUN_NAME <<< "$job"
+    [ -n "$MODEL" ] && [ -n "$REVISION" ] && [ -n "$RUN_NAME" ] || { echo ">>> bad JOBS entry '$job' (want model:revision:run_name)"; exit 1; }
     echo ">>> checkpoint $MODEL @ $REVISION -> $RUN_NAME"
     # Generation is the expensive, irreplaceable part: run it for every prompt
     # file first and stop this checkpoint on failure. Metrics are recomputable,
@@ -67,6 +69,8 @@ run: |
       uv run python -m noncanon.metrics --tokenizer "$MODEL" --revision "$REVISION" \
           --records "$OUT"/*.parquet --out-dir "$OUT/metrics" || echo ">>> metrics failed for $OUT (records are still uploaded)"
     done
-    uv run python -m noncanon.upload "out/$RUN_NAME" "$RUN_NAME" --repo "$HF_DATASET" || echo ">>> upload failed for $RUN_NAME"
+    # The records only exist on this box until the upload succeeds: a failed
+    # upload fails the job so the cluster is not torn down under them.
+    uv run python -m noncanon.upload "out/$RUN_NAME" "$RUN_NAME" --repo "$HF_DATASET" || { echo ">>> upload failed for $RUN_NAME"; exit 1; }
     [ "$ok" = 1 ] || { echo ">>> generation failed for $RUN_NAME"; exit 1; }
   done

@@ -149,6 +149,17 @@ def test_out_of_vocabulary_id_is_its_own_event(an):
     assert "⟨id" in a["transcript"] or "jumps" in a["transcript"]
 
 
+def test_consecutive_out_of_vocabulary_ids_are_one_event(an):
+    # Like a run of undecodable bytes, a run of OOV ids is one event with
+    # every id excluded, so the headline rate treats the two classes alike.
+    oov = [len(an.tok) + 5, len(an.tok) + 6, len(an.tok) + 7]
+    left, right = enc(an, "The quick brown fox"), enc(an, " jumps over the lazy dog")
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", left + oov + right))
+    assert a["excluded_oov"] == 3 and a["n_tokens"] == len(left) + len(right)
+    assert a["fragment_events"] == 1 and a["nc_events"] == 1 and a["nc_canonical"] == 0
+    assert a["spans"][0]["emitted"] == [f"⟨id {t}⟩" for t in oov]
+
+
 def test_truncated_tail_without_whitespace_loses_at_most_a_few_tokens(an):
     # A long Chinese passage has no whitespace tokens; the cut must not
     # discard it all the way back to the last space.

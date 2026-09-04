@@ -98,7 +98,7 @@ rough priority order.
 
 | Family | Checkpoints | What it adds |
 |---|---|---|
-| Tulu-3-8B (Llama-3.1 base) | `Llama-3.1-Tulu-3-8B-SFT`, `-DPO`, `-8B` (RLVR), `Tulu-3.1-8B` (longer RL) | Same recipe and code on a different base and tokenizer (three-digit tokens); two RL doses |
+| Tulu-3-8B (Llama-3.1 base) | `Llama-3.1-Tulu-3-8B-SFT`, `-DPO`, `-8B` (RLVR, PPO), `Tulu-3.1-8B` (the RLVR stage redone with GRPO and retuned; corrected 2026-09-04 from "longer RL") | Same recipe and code on a different base and tokenizer (three-digit tokens); two RL runs from the same DPO checkpoint |
 | Phi-4 (14B) | `Phi-4-reasoning` (SFT on o3-mini traces) → `Phi-4-reasoning-plus` (+ math GRPO) | Most modern SFT→RL pair; short RL dose; training code closed |
 | OLMo-2-32B | `OLMo-2-0325-32B-SFT`, `-DPO`, `-Instruct` | Older full ladder at 32B |
 | Qwen2.5-32B base family | `DeepSeek-R1-Distill-Qwen-32B` (SFT-only CoT) vs `Open-Reasoner-Zero-32B` / `DAPO-Qwen-32B` (RL-only CoT), plus the base | Same base, SFT-only vs RL-only reasoning; the zero models have weak general compliance |
