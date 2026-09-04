@@ -23,6 +23,11 @@ Reproduction section).
 
 ### 1. Training stages, DAPO, temperature 1 / top-p 1
 
+<!-- generated: uv run python -m noncanon.summary --arm untruncated ladder \
+    "OLMo-3 Think:SFT=out/think-sft/dapo_sample500" "OLMo-3 Think:DPO=out/think-dpo/dapo_sample500" "OLMo-3 Think:RL final=out/think-main/dapo_sample500" \
+    "OLMo-3 RL-Zero-Math:step 300=out/rlzero-math-step300/dapo_sample500" "OLMo-3 RL-Zero-Math:step 2000 (final)=out/rlzero-math/dapo_sample500" \
+    "OLMo-3 Instruct:SFT=out/instruct-sft/dapo_sample500" "OLMo-3 Instruct:DPO=out/instruct-dpo/dapo_sample500" "OLMo-3 Instruct:RL final=out/instruct-main/dapo_sample500" \
+    "Tulu-3-8B:SFT=out/tulu3-sft/dapo_sample500" "Tulu-3-8B:DPO=out/tulu3-dpo/dapo_sample500" "Tulu-3-8B:RLVR (PPO)=out/tulu3-rlvr/dapo_sample500" "Tulu-3-8B:3.1 RLVR (GRPO)=out/tulu31-rlvr/dapo_sample500" -->
 | family | stage | rollouts | parsed | correct | truncated | mean tokens | rollouts with ≥1 NC event [Wilson 95%] | p vs previous stage | p vs first stage | correct rollouts with ≥1 NC | p vs previous | p vs first | within first 1,024 tokens (of rollouts ≥ 1,024) | per-token rate |
 |---|---|--:|--:|--:|--:|--:|---|--:|--:|---|--:|--:|---|--:|
 | OLMo-3 Think | SFT | 500 | 481 | 469 | 0 | 8,231 | 11.8% (59/500) [9.3–14.9] | — | — | 9.2% (43/469) [6.9–12.1] | — | — | 0.8% (4/500) | 0.0030% |
@@ -39,6 +44,7 @@ Reproduction section).
 | Tulu-3-8B | 3.1 RLVR (GRPO) | 500 | 493 | 87 | 0 | 1,104 | 3.4% (17/500) [2.1–5.4] | 0.716 | 0.212 | 2.3% (2/87) [0.6–8.0] | 1.000 | 1.000 | 0.5% (1/207) | 0.0060% |
 
 Omnibus chi-square across each family's stages (all rollouts / correct rollouts / within first 1,024 tokens): OLMo-3 Think < 1e-10 / < 1e-10 / < 1e-10; OLMo-3 RL-Zero-Math < 1e-10 / < 1e-10 / < 1e-10; OLMo-3 Instruct < 1e-10 / 2.6e-07 / 0.003; Tulu-3-8B 0.159 / 0.911 / 9.6e-07
+<!-- end generated -->
 
 Reading: within each OLMo-3 track the DPO checkpoint flags more rollouts
 than the SFT before it (4.7× Think, 6.2× Instruct), and the on-policy RL
@@ -54,11 +60,14 @@ correct-only columns give the same orderings as the all-rollout columns.
 
 ### 2. DAPO vs AIME, same model, temperature 1 / top-p 1
 
+<!-- generated: uv run python -m noncanon.summary --arm untruncated pairs --labels DAPO AIME \
+    "OLMo-3 Think-DPO=out/think-dpo/dapo_sample500,out/think-dpo/aime_2024_2025" "OLMo-3 Think RL final=out/think-main/dapo_sample500,out/think-main/aime_2024_2025" "OLMo-3 RL-Zero-Math final=out/rlzero-math/dapo_sample500,out/rlzero-math/aime_2024_2025" -->
 | model | settings (DAPO / AIME) | rollouts (DAPO / AIME) | parsed | correct | truncated | mean tokens | ≥1 NC event, DAPO | ≥1 NC event, AIME | p | correct rollouts ≥1 NC, DAPO | AIME | p | within first 1,024 tokens, DAPO | AIME | p | per-token rate, DAPO / AIME |
 |---|---|--:|--:|--:|--:|--:|---|---|--:|---|---|--:|---|---|--:|--:|
 | OLMo-3 Think-DPO | T=1.0, top-p=1.0 / T=1.0, top-p=1.0 | 500 / 480 | 479 / 393 | 472 / 317 | 3 / 46 | 8,184 / 17,384 | 55.0% (275/500) [50.6–59.3] | 68.8% (330/480) [64.5–72.7] | 1.0e-05 | 54.2% (256/472) | 62.8% (199/317) | 0.019 | 22.1% (110/497) | 24.7% (118/478) | 0.364 | 0.0186% / 0.0177% |
 | OLMo-3 Think RL final | T=1.0, top-p=1.0 / T=1.0, top-p=1.0 | 500 / 480 | 492 / 416 | 486 / 327 | 7 / 54 | 9,299 / 19,127 | 10.2% (51/500) [7.8–13.2] | 22.9% (110/480) [19.4–26.9] | 7.1e-08 | 9.3% (45/486) | 15.3% (50/327) | 0.010 | 1.2% (6/500) | 1.5% (7/480) | 0.785 | 0.0034% / 0.0039% |
 | OLMo-3 RL-Zero-Math final | T=1.0, top-p=1.0 / T=1.0, top-p=1.0 | 500 / 480 | 498 / 476 | 446 / 166 | 1 / 3 | 6,265 / 11,229 | 58.4% (292/500) [54.0–62.6] | 67.3% (323/480) [63.0–71.3] | 0.004 | 56.5% (252/446) | 56.0% (93/166) | 0.927 | 44.3% (221/499) | 43.1% (207/480) | 0.747 | 0.0238% / 0.0273% |
+<!-- end generated -->
 
 Reading: every model flags more AIME rollouts than DAPO rollouts overall
 (AIME rollouts are 1.8–2.1× longer), and none differs within the first
@@ -67,6 +76,10 @@ sets.
 
 ### 3. Temperature 1 / top-p 1 vs each checkpoint's recommended settings, DAPO
 
+<!-- generated: uv run python -m noncanon.summary pairs --labels untruncated recommended \
+    "OLMo-3 Think-DPO=out/think-dpo/dapo_sample500:untruncated,out/think-dpo-recommended/dapo_sample500:recommended" "OLMo-3 Think RL final=out/think-main/dapo_sample500:untruncated,out/think-main-recommended/dapo_sample500:recommended" \
+    "OLMo-3 Instruct-SFT=out/instruct-sft/dapo_sample500:untruncated,out/instruct-sft/dapo_sample500:recommended" "OLMo-3 Instruct-DPO=out/instruct-dpo/dapo_sample500:untruncated,out/instruct-dpo/dapo_sample500:recommended" "OLMo-3 Instruct RL final=out/instruct-main/dapo_sample500:untruncated,out/instruct-main/dapo_sample500:recommended" \
+    "Tulu-3-SFT=out/tulu3-sft/dapo_sample500:untruncated,out/tulu3-sft/dapo_sample500:recommended" "Tulu-3-DPO=out/tulu3-dpo/dapo_sample500:untruncated,out/tulu3-dpo/dapo_sample500:recommended" "Tulu-3 RLVR=out/tulu3-rlvr/dapo_sample500:untruncated,out/tulu3-rlvr/dapo_sample500:recommended" "Tulu-3.1=out/tulu31-rlvr/dapo_sample500:untruncated,out/tulu31-rlvr/dapo_sample500:recommended" -->
 | model | settings (untruncated / recommended) | rollouts (untruncated / recommended) | parsed | correct | truncated | mean tokens | ≥1 NC event, untruncated | ≥1 NC event, recommended | p | correct rollouts ≥1 NC, untruncated | recommended | p | within first 1,024 tokens, untruncated | recommended | p | per-token rate, untruncated / recommended |
 |---|---|--:|--:|--:|--:|--:|---|---|--:|---|---|--:|---|---|--:|--:|
 | OLMo-3 Think-DPO | T=1.0, top-p=1.0 / T=0.6, top-p=0.95 | 500 / 500 | 479 / 490 | 472 / 483 | 3 / 2 | 8,184 / 7,775 | 55.0% (275/500) [50.6–59.3] | 15.2% (76/500) [12.3–18.6] | < 1e-10 | 54.2% (256/472) | 15.1% (73/483) | < 1e-10 | 22.1% (110/497) | 7.0% (35/498) | < 1e-10 | 0.0186% / 0.0032% |
@@ -78,6 +91,7 @@ sets.
 | Tulu-3-DPO | T=1.0, top-p=1.0 / T=0.6, top-p=0.9 | 500 / 500 | 498 / 496 | 54 / 64 | 0 / 2 | 943 / 1,064 | 3.0% (15/500) [1.8–4.9] | 0.8% (4/500) [0.3–2.0] | 0.018 | 1.9% (1/54) | 1.6% (1/64) | 1.000 | 3.6% (6/168) | 1.3% (2/149) | 0.290 | 0.0085% / 0.0034% |
 | Tulu-3 RLVR | T=1.0, top-p=1.0 / T=0.6, top-p=0.9 | 500 / 500 | 498 / 493 | 79 / 79 | 0 / 3 | 1,112 / 1,244 | 2.8% (14/500) [1.7–4.6] | 1.4% (7/500) [0.7–2.9] | 0.185 | 2.5% (2/79) | 0.0% (0/79) | 0.497 | 3.2% (8/249) | 0.9% (2/219) | 0.113 | 0.0065% / 0.0042% |
 | Tulu-3.1 | T=1.0, top-p=1.0 / T=0.6, top-p=0.9 | 500 / 500 | 493 / 475 | 87 / 93 | 0 / 20 | 1,104 / 2,430 | 3.4% (17/500) [2.1–5.4] | 2.2% (11/500) [1.2–3.9] | 0.338 | 2.3% (2/87) | 0.0% (0/93) | 0.232 | 0.5% (1/207) | 2.2% (5/230) | 0.219 | 0.0060% / 0.0021% |
+<!-- end generated -->
 
 Reading: the recommended settings lower the flagged fraction in every
 cell, by 3.6–8.5× in the OLMo-3 cells (all p ≤ 7e-4) and by 1.5–8.7× in
@@ -907,68 +921,86 @@ tokens among rollouts that reached L (length control). The per-token rate
 and the per-rollout permutation test on pooled rates are kept for
 continuity. Every full-run cell (not the pilot) was recomputed with the
 current code so the windowed flags include standalone fragment events (no
-other number changed). All tables from `noncanon.compare --table`; all pairs from
-`scripts/compare_all.sh`.
+other number changed). Every table in this section is a generated block (see Reproduction);
+`scripts/compare_all.sh` prints the full `noncanon.compare` output for each pair.
 
 ### Rollouts with ≥1 event, DAPO 500, temperature 1 / top-p 1
 
-| cell | with ≥1 event | Wilson 95% | within first 256 tokens (of rollouts ≥ 256) | within first 1,024 | within first 4,096 | per-token rate |
-|---|--:|---|---|---|---|--:|
-| Think-SFT | 59 (11.8%) | 9.3–14.9% | 2/500 = 0.4% | 4/500 = 0.8% | 11/440 = 2.5% | 0.0030% |
-| Think-DPO | 275 (55.0%) | 50.6–59.3% | 37/498 = 7.4% | 110/497 = 22.1% | 213/400 = 53.2% | 0.0186% |
-| Think RL final | 51 (10.2%) | 7.8–13.2% | 0/500 = 0.0% | 6/500 = 1.2% | 16/464 = 3.4% | 0.0034% |
-| RL-Zero step 300 | 73 (14.6%) | 11.8–18.0% | 9/499 = 1.8% | 14/493 = 2.8% | 33/310 = 10.6% | 0.0085% |
-| RL-Zero step 2000 | 292 (58.4%) | 54.0–62.6% | 215/500 = 43.0% | 221/499 = 44.3% | 191/359 = 53.2% | 0.0238% |
-| Instruct-SFT | 17 (3.4%) | 2.1–5.4% | 7/410 = 1.7% | 1/31 = 3.2% | — | 0.0267% |
-| Instruct-DPO | 105 (21.0%) | 17.7–24.8% | 8/497 = 1.6% | 28/348 = 8.0% | 31/102 = 30.4% | 0.0186% |
-| Instruct RL final | 31 (6.2%) | 4.4–8.7% | 1/499 = 0.2% | 10/388 = 2.6% | 6/77 = 7.8% | 0.0047% |
-| Tulu-3-SFT | 26 (5.2%) | 3.6–7.5% | 2/491 = 0.4% | 14/106 = 13.2% | — | 0.0342% |
-| Tulu-3-DPO | 15 (3.0%) | 1.8–4.9% | 2/498 = 0.4% | 6/168 = 3.6% | — | 0.0085% |
-| Tulu-3 RLVR | 14 (2.8%) | 1.7–4.6% | 4/498 = 0.8% | 8/249 = 3.2% | 0/1 † | 0.0065% |
-| Tulu-3.1 | 17 (3.4%) | 2.1–5.4% | 4/496 = 0.8% | 1/207 = 0.5% | 0/3 † | 0.0060% |
+<!-- generated: uv run python -m noncanon.compare --table --arm untruncated "Think-SFT=out/think-sft/dapo_sample500" "Think-DPO=out/think-dpo/dapo_sample500" "Think RL final=out/think-main/dapo_sample500" "RL-Zero step 300=out/rlzero-math-step300/dapo_sample500" "RL-Zero step 2000=out/rlzero-math/dapo_sample500" "Instruct-SFT=out/instruct-sft/dapo_sample500" "Instruct-DPO=out/instruct-dpo/dapo_sample500" "Instruct RL final=out/instruct-main/dapo_sample500" "Tulu-3-SFT=out/tulu3-sft/dapo_sample500" "Tulu-3-DPO=out/tulu3-dpo/dapo_sample500" "Tulu-3 RLVR=out/tulu3-rlvr/dapo_sample500" "Tulu-3.1=out/tulu31-rlvr/dapo_sample500" -->
+| cell | rollouts | with ≥1 event | Wilson 95% | within first 256 (of those ≥ 256) | within first 1024 (of those ≥ 1024) | within first 4096 (of those ≥ 4096) | per-token rate |
+|---|--:|--:|---|---|---|---|--:|
+| Think-SFT | 500 | 59 (11.8%) | 9.3–14.9% | 2/500 = 0.4% | 4/500 = 0.8% | 11/440 = 2.5% | 0.0030% |
+| Think-DPO | 500 | 275 (55.0%) | 50.6–59.3% | 37/498 = 7.4% | 110/497 = 22.1% | 213/400 = 53.2% | 0.0186% |
+| Think RL final | 500 | 51 (10.2%) | 7.8–13.2% | 0/500 = 0.0% | 6/500 = 1.2% | 16/464 = 3.4% | 0.0034% |
+| RL-Zero step 300 | 500 | 73 (14.6%) | 11.8–18.0% | 9/499 = 1.8% | 14/493 = 2.8% | 33/310 = 10.6% | 0.0085% |
+| RL-Zero step 2000 | 500 | 292 (58.4%) | 54.0–62.6% | 215/500 = 43.0% | 221/499 = 44.3% | 191/359 = 53.2% | 0.0238% |
+| Instruct-SFT | 500 | 17 (3.4%) | 2.1–5.4% | 7/410 = 1.7% | 1/31 = 3.2% | — | 0.0267% |
+| Instruct-DPO | 500 | 105 (21.0%) | 17.7–24.8% | 8/497 = 1.6% | 28/348 = 8.0% | 31/102 = 30.4% | 0.0186% |
+| Instruct RL final | 500 | 31 (6.2%) | 4.4–8.7% | 1/499 = 0.2% | 10/388 = 2.6% | 6/77 = 7.8% | 0.0047% |
+| Tulu-3-SFT | 500 | 26 (5.2%) | 3.6–7.5% | 2/491 = 0.4% | 14/106 = 13.2% | — | 0.0342% |
+| Tulu-3-DPO | 500 | 15 (3.0%) | 1.8–4.9% | 2/498 = 0.4% | 6/168 = 3.6% | — | 0.0085% |
+| Tulu-3 RLVR | 500 | 14 (2.8%) | 1.7–4.6% | 4/498 = 0.8% | 8/249 = 3.2% | 0/1 = 0.0% † | 0.0065% |
+| Tulu-3.1 | 500 | 17 (3.4%) | 2.1–5.4% | 4/496 = 0.8% | 1/207 = 0.5% | 0/3 = 0.0% † | 0.0060% |
+<!-- end generated -->
 
 ### Rollouts with ≥1 event, DAPO 500, recommended settings
 
-| cell | with ≥1 event | Wilson 95% | within first 256 | within first 1,024 | within first 4,096 | per-token rate |
-|---|--:|---|---|---|---|--:|
-| Think-DPO | 76 (15.2%) | 12.3–18.6% | 22/498 = 4.4% | 35/498 = 7.0% | 65/388 = 16.8% | 0.0032% |
-| Think RL final | 10 (2.0%) | 1.1–3.6% | 1/500 = 0.2% | 1/500 = 0.2% | 3/457 = 0.7% | 0.0008% |
-| Instruct-SFT | 2 (0.4%) | 0.1–1.4% | 1/425 = 0.2% | 0/49 = 0.0% | 0/23 = 0.0% | 0.0004% |
-| Instruct-DPO | 25 (5.0%) | 3.4–7.3% | 0/498 = 0.0% | 5/328 = 1.5% | 5/86 = 5.8% | 0.0028% |
-| Instruct RL final | 5 (1.0%) | 0.4–2.3% | 0/498 = 0.0% | 2/387 = 0.5% | 1/77 = 1.3% | 0.0008% |
-| Tulu-3-SFT | 3 (0.6%) | 0.2–1.7% | 0/482 = 0.0% | 2/127 = 1.6% | 0/17 = 0.0% | 0.0026% |
-| Tulu-3-DPO | 4 (0.8%) | 0.3–2.0% | 1/492 = 0.2% | 2/149 = 1.3% | 0/4 † | 0.0034% |
-| Tulu-3 RLVR | 7 (1.4%) | 0.7–2.9% | 2/498 = 0.4% | 2/219 = 0.9% | 0/4 † | 0.0042% |
-| Tulu-3.1 | 11 (2.2%) | 1.2–3.9% | 4/498 = 0.8% | 5/230 = 2.2% | 0/29 = 0.0% | 0.0021% |
+<!-- generated: uv run python -m noncanon.compare --table --arm recommended "Think-DPO=out/think-dpo-recommended/dapo_sample500" "Think RL final=out/think-main-recommended/dapo_sample500" "Instruct-SFT=out/instruct-sft/dapo_sample500" "Instruct-DPO=out/instruct-dpo/dapo_sample500" "Instruct RL final=out/instruct-main/dapo_sample500" "Tulu-3-SFT=out/tulu3-sft/dapo_sample500" "Tulu-3-DPO=out/tulu3-dpo/dapo_sample500" "Tulu-3 RLVR=out/tulu3-rlvr/dapo_sample500" "Tulu-3.1=out/tulu31-rlvr/dapo_sample500" -->
+| cell | rollouts | with ≥1 event | Wilson 95% | within first 256 (of those ≥ 256) | within first 1024 (of those ≥ 1024) | within first 4096 (of those ≥ 4096) | per-token rate |
+|---|--:|--:|---|---|---|---|--:|
+| Think-DPO | 500 | 76 (15.2%) | 12.3–18.6% | 22/498 = 4.4% | 35/498 = 7.0% | 65/388 = 16.8% | 0.0032% |
+| Think RL final | 500 | 10 (2.0%) | 1.1–3.6% | 1/500 = 0.2% | 1/500 = 0.2% | 3/457 = 0.7% | 0.0008% |
+| Instruct-SFT | 500 | 2 (0.4%) | 0.1–1.4% | 1/425 = 0.2% | 0/49 = 0.0% | 0/23 = 0.0% | 0.0004% |
+| Instruct-DPO | 500 | 25 (5.0%) | 3.4–7.3% | 0/498 = 0.0% | 5/328 = 1.5% | 5/86 = 5.8% | 0.0028% |
+| Instruct RL final | 500 | 5 (1.0%) | 0.4–2.3% | 0/498 = 0.0% | 2/387 = 0.5% | 1/77 = 1.3% | 0.0008% |
+| Tulu-3-SFT | 500 | 3 (0.6%) | 0.2–1.7% | 0/482 = 0.0% | 2/127 = 1.6% | 0/17 = 0.0% | 0.0026% |
+| Tulu-3-DPO | 500 | 4 (0.8%) | 0.3–2.0% | 1/492 = 0.2% | 2/149 = 1.3% | 0/4 = 0.0% † | 0.0034% |
+| Tulu-3 RLVR | 500 | 7 (1.4%) | 0.7–2.9% | 2/498 = 0.4% | 2/219 = 0.9% | 0/4 = 0.0% † | 0.0042% |
+| Tulu-3.1 | 500 | 11 (2.2%) | 1.2–3.9% | 4/498 = 0.8% | 5/230 = 2.2% | 0/29 = 0.0% | 0.0021% |
+<!-- end generated -->
 
 ### Rollouts with ≥1 event, AIME 2024/2025 (60 × 8), temperature 1
 
-| cell | with ≥1 event | Wilson 95% | within first 256 | within first 1,024 | within first 4,096 | per-token rate |
-|---|--:|---|---|---|---|--:|
-| Think-DPO | 330/480 (68.8%) | 64.5–72.7% | 39/478 = 8.2% | 118/478 = 24.7% | 255/468 = 54.5% | 0.0177% |
-| Think RL final | 110/480 (22.9%) | 19.4–26.9% | 1/480 = 0.2% | 7/480 = 1.5% | 22/480 = 4.6% | 0.0039% |
-| RL-Zero step 2000 | 323/480 (67.3%) | 63.0–71.3% | 204/480 = 42.5% | 207/480 = 43.1% | 218/459 = 47.5% | 0.0273% |
+<!-- generated: uv run python -m noncanon.compare --table "Think-DPO=out/think-dpo/aime_2024_2025" "Think RL final=out/think-main/aime_2024_2025" "RL-Zero step 2000=out/rlzero-math/aime_2024_2025" -->
+| cell | rollouts | with ≥1 event | Wilson 95% | within first 256 (of those ≥ 256) | within first 1024 (of those ≥ 1024) | within first 4096 (of those ≥ 4096) | per-token rate |
+|---|--:|--:|---|---|---|---|--:|
+| Think-DPO | 480 | 330 (68.8%) | 64.5–72.7% | 39/478 = 8.2% | 118/478 = 24.7% | 255/468 = 54.5% | 0.0177% |
+| Think RL final | 480 | 110 (22.9%) | 19.4–26.9% | 1/480 = 0.2% | 7/480 = 1.5% | 22/480 = 4.6% | 0.0039% |
+| RL-Zero step 2000 | 480 | 323 (67.3%) | 63.0–71.3% | 204/480 = 42.5% | 207/480 = 43.1% | 218/459 = 47.5% | 0.0273% |
+<!-- end generated -->
 
 ### Correct rollouts only, DAPO 500, temperature 1
 
-| cell | correct rollouts | with ≥1 event | Wilson 95% | within first 256 | within first 1,024 | within first 4,096 |
-|---|--:|--:|---|---|---|---|
-| Think-SFT | 469 | 43 (9.2%) | 6.9–12.1% | 2/469 = 0.4% | 4/469 = 0.9% | 11/409 = 2.7% |
-| Think-DPO | 472 | 256 (54.2%) | 49.7–58.7% | 35/472 = 7.4% | 103/472 = 21.8% | 202/382 = 52.9% |
-| Think RL final | 486 | 45 (9.3%) | 7.0–12.2% | 0/486 = 0.0% | 6/486 = 1.2% | 16/451 = 3.5% |
-| RL-Zero step 300 | 436 | 58 (13.3%) | 10.4–16.8% | 7/436 = 1.6% | 10/431 = 2.3% | 27/252 = 10.7% |
-| RL-Zero step 2000 | 446 | 252 (56.5%) | 51.9–61.0% | 187/446 = 41.9% | 193/445 = 43.4% | 162/305 = 53.1% |
-| Instruct-SFT | 133 | 5 (3.8%) | 1.6–8.5% | 3/114 = 2.6% | 1/11 = 9.1% | — |
-| Instruct-DPO | 368 | 57 (15.5%) | 12.2–19.5% | 7/365 = 1.9% | 20/246 = 8.1% | 15/51 = 29.4% |
-| Instruct RL final | 460 | 25 (5.4%) | 3.7–7.9% | 1/459 = 0.2% | 8/353 = 2.3% | 4/58 = 6.9% |
-| Tulu-3-SFT | 20 | 0 (0.0%) | 0.0–16.1% | 0/20 = 0.0% | — | — |
-| Tulu-3-DPO | 54 | 1 (1.9%) | 0.3–9.8% | 0/54 = 0.0% | 0/15 = 0.0% | — |
-| Tulu-3 RLVR | 79 | 2 (2.5%) | 0.7–8.8% | 1/78 = 1.3% | 2/32 = 6.2% | — |
-| Tulu-3.1 | 87 | 2 (2.3%) | 0.6–8.0% | 1/86 = 1.2% | 0/28 = 0.0% | 0/1 † |
+<!-- generated: uv run python -m noncanon.compare --table --arm untruncated --outcome correct "Think-SFT=out/think-sft/dapo_sample500" "Think-DPO=out/think-dpo/dapo_sample500" "Think RL final=out/think-main/dapo_sample500" "RL-Zero step 300=out/rlzero-math-step300/dapo_sample500" "RL-Zero step 2000=out/rlzero-math/dapo_sample500" "Instruct-SFT=out/instruct-sft/dapo_sample500" "Instruct-DPO=out/instruct-dpo/dapo_sample500" "Instruct RL final=out/instruct-main/dapo_sample500" "Tulu-3-SFT=out/tulu3-sft/dapo_sample500" "Tulu-3-DPO=out/tulu3-dpo/dapo_sample500" "Tulu-3 RLVR=out/tulu3-rlvr/dapo_sample500" "Tulu-3.1=out/tulu31-rlvr/dapo_sample500" -->
+| cell | rollouts | with ≥1 event | Wilson 95% | within first 256 (of those ≥ 256) | within first 1024 (of those ≥ 1024) | within first 4096 (of those ≥ 4096) | per-token rate |
+|---|--:|--:|---|---|---|---|--:|
+| Think-SFT | 469 | 43 (9.2%) | 6.9–12.1% | 2/469 = 0.4% | 4/469 = 0.9% | 11/409 = 2.7% | 0.0023% |
+| Think-DPO | 472 | 256 (54.2%) | 49.7–58.7% | 35/472 = 7.4% | 103/472 = 21.8% | 202/382 = 52.9% | 0.0191% |
+| Think RL final | 486 | 45 (9.3%) | 7.0–12.2% | 0/486 = 0.0% | 6/486 = 1.2% | 16/451 = 3.5% | 0.0034% |
+| RL-Zero step 300 | 436 | 58 (13.3%) | 10.4–16.8% | 7/436 = 1.6% | 10/431 = 2.3% | 27/252 = 10.7% | 0.0092% |
+| RL-Zero step 2000 | 446 | 252 (56.5%) | 51.9–61.0% | 187/446 = 41.9% | 193/445 = 43.4% | 162/305 = 53.1% | 0.0220% |
+| Instruct-SFT | 133 | 5 (3.8%) | 1.6–8.5% | 3/114 = 2.6% | 1/11 = 9.1% | — | 0.0311% |
+| Instruct-DPO | 368 | 57 (15.5%) | 12.2–19.5% | 7/365 = 1.9% | 20/246 = 8.1% | 15/51 = 29.4% | 0.0142% |
+| Instruct RL final | 460 | 25 (5.4%) | 3.7–7.9% | 1/459 = 0.2% | 8/353 = 2.3% | 4/58 = 6.9% | 0.0047% |
+| Tulu-3-SFT | 20 | 0 (0.0%) | 0.0–16.1% | 0/20 = 0.0% | — | — | 0.0000% |
+| Tulu-3-DPO | 54 | 1 (1.9%) | 0.3–9.8% | 0/54 = 0.0% | 0/15 = 0.0% | — | 0.0020% |
+| Tulu-3 RLVR | 79 | 2 (2.5%) | 0.7–8.8% | 1/78 = 1.3% | 2/32 = 6.2% | — | 0.0063% |
+| Tulu-3.1 | 87 | 2 (2.3%) | 0.6–8.0% | 1/86 = 1.2% | 0/28 = 0.0% | 0/1 = 0.0% † | 0.0063% |
+<!-- end generated -->
 
-Parsed-only (correct + incorrect) for the short-answer families: Instruct
-SFT 11/415 = 2.7%, DPO 103/496 = 20.8%, RL final 31/500 = 6.2%; Tulu SFT
-18/478 = 3.8%, DPO 15/498 = 3.0%, RLVR 14/498 = 2.8%, 3.1 17/493 = 3.4%.
+### Parsed rollouts only (correct + incorrect), short-answer families, DAPO 500, temperature 1
+
+<!-- generated: uv run python -m noncanon.compare --table --arm untruncated --outcome parsed "Instruct-SFT=out/instruct-sft/dapo_sample500" "Instruct-DPO=out/instruct-dpo/dapo_sample500" "Instruct RL final=out/instruct-main/dapo_sample500" "Tulu-3-SFT=out/tulu3-sft/dapo_sample500" "Tulu-3-DPO=out/tulu3-dpo/dapo_sample500" "Tulu-3 RLVR=out/tulu3-rlvr/dapo_sample500" "Tulu-3.1=out/tulu31-rlvr/dapo_sample500" -->
+| cell | rollouts | with ≥1 event | Wilson 95% | within first 256 (of those ≥ 256) | within first 1024 (of those ≥ 1024) | within first 4096 (of those ≥ 4096) | per-token rate |
+|---|--:|--:|---|---|---|---|--:|
+| Instruct-SFT | 415 | 11 (2.7%) | 1.5–4.7% | 5/341 = 1.5% | 1/28 = 3.6% | — | 0.0261% |
+| Instruct-DPO | 496 | 103 (20.8%) | 17.4–24.6% | 8/493 = 1.6% | 27/344 = 7.8% | 30/100 = 30.0% | 0.0187% |
+| Instruct RL final | 500 | 31 (6.2%) | 4.4–8.7% | 1/499 = 0.2% | 10/388 = 2.6% | 6/77 = 7.8% | 0.0047% |
+| Tulu-3-SFT | 478 | 18 (3.8%) | 2.4–5.9% | 2/470 = 0.4% | 11/100 = 11.0% | — | 0.0093% |
+| Tulu-3-DPO | 498 | 15 (3.0%) | 1.8–4.9% | 2/496 = 0.4% | 6/167 = 3.6% | — | 0.0085% |
+| Tulu-3 RLVR | 498 | 14 (2.8%) | 1.7–4.7% | 4/496 = 0.8% | 8/248 = 3.2% | 0/1 = 0.0% † | 0.0065% |
+| Tulu-3.1 | 493 | 17 (3.4%) | 2.2–5.5% | 4/489 = 0.8% | 1/203 = 0.5% | 0/3 = 0.0% † | 0.0061% |
+<!-- end generated -->
 
 ### Pairwise tests, rollouts as the unit
 
@@ -977,45 +1009,47 @@ Fisher exact p on flagged rollouts (all, then within the first 256 /
 per-token rates (headline convention) for continuity. Same pairs as the
 per-token analysis above; no new pairs.
 
+<!-- generated: uv run python -m noncanon.compare --pairs "Think-DPO vs Think RL final=out/think-dpo/dapo_sample500,out/think-main/dapo_sample500" "Think-DPO vs RL-Zero 2000=out/think-dpo/dapo_sample500,out/rlzero-math/dapo_sample500" "RL-Zero 2000 vs Think RL final=out/rlzero-math/dapo_sample500,out/think-main/dapo_sample500" "RL-Zero 300 vs RL-Zero 2000=out/rlzero-math-step300/dapo_sample500,out/rlzero-math/dapo_sample500" "Think-SFT vs Think-DPO=out/think-sft/dapo_sample500,out/think-dpo/dapo_sample500" "Think-SFT vs Think RL final=out/think-sft/dapo_sample500,out/think-main/dapo_sample500" "RL-Zero 2000: DAPO vs AIME=out/rlzero-math/dapo_sample500,out/rlzero-math/aime_2024_2025" "Think-DPO: DAPO vs AIME=out/think-dpo/dapo_sample500,out/think-dpo/aime_2024_2025" "Think RL final: DAPO vs AIME=out/think-main/dapo_sample500,out/think-main/aime_2024_2025" "AIME: Think-DPO vs RL-Zero 2000=out/think-dpo/aime_2024_2025,out/rlzero-math/aime_2024_2025" "AIME: Think-DPO vs Think RL final=out/think-dpo/aime_2024_2025,out/think-main/aime_2024_2025" "AIME: RL-Zero 2000 vs Think RL final=out/rlzero-math/aime_2024_2025,out/think-main/aime_2024_2025" "Think RL final: untruncated vs recommended=out/think-main/dapo_sample500,out/think-main-recommended/dapo_sample500" "recommended: Think-DPO vs Think RL final=out/think-dpo-recommended/dapo_sample500,out/think-main-recommended/dapo_sample500" "Think-DPO: untruncated vs recommended=out/think-dpo/dapo_sample500,out/think-dpo-recommended/dapo_sample500" "Instruct-SFT vs Instruct-DPO=out/instruct-sft/dapo_sample500:untruncated,out/instruct-dpo/dapo_sample500:untruncated" "Instruct-DPO vs Instruct RL final=out/instruct-dpo/dapo_sample500:untruncated,out/instruct-main/dapo_sample500:untruncated" "Instruct-SFT vs Instruct RL final=out/instruct-sft/dapo_sample500:untruncated,out/instruct-main/dapo_sample500:untruncated" "recommended: Instruct-SFT vs DPO=out/instruct-sft/dapo_sample500:recommended,out/instruct-dpo/dapo_sample500:recommended" "recommended: Instruct-DPO vs RL final=out/instruct-dpo/dapo_sample500:recommended,out/instruct-main/dapo_sample500:recommended" "recommended: Instruct-SFT vs RL final=out/instruct-sft/dapo_sample500:recommended,out/instruct-main/dapo_sample500:recommended" "Tulu-3-SFT vs Tulu-3-DPO=out/tulu3-sft/dapo_sample500:untruncated,out/tulu3-dpo/dapo_sample500:untruncated" "Tulu-3-DPO vs Tulu-3 RLVR=out/tulu3-dpo/dapo_sample500:untruncated,out/tulu3-rlvr/dapo_sample500:untruncated" "Tulu-3-SFT vs Tulu-3 RLVR=out/tulu3-sft/dapo_sample500:untruncated,out/tulu3-rlvr/dapo_sample500:untruncated" "Tulu-3 RLVR vs Tulu-3.1=out/tulu3-rlvr/dapo_sample500:untruncated,out/tulu31-rlvr/dapo_sample500:untruncated" "Tulu-3-DPO vs Tulu-3.1=out/tulu3-dpo/dapo_sample500:untruncated,out/tulu31-rlvr/dapo_sample500:untruncated" "recommended: Tulu SFT vs DPO=out/tulu3-sft/dapo_sample500:recommended,out/tulu3-dpo/dapo_sample500:recommended" "recommended: Tulu DPO vs RLVR=out/tulu3-dpo/dapo_sample500:recommended,out/tulu3-rlvr/dapo_sample500:recommended" "recommended: Tulu SFT vs RLVR=out/tulu3-sft/dapo_sample500:recommended,out/tulu3-rlvr/dapo_sample500:recommended" "recommended: Tulu RLVR vs 3.1=out/tulu3-rlvr/dapo_sample500:recommended,out/tulu31-rlvr/dapo_sample500:recommended" "recommended: Tulu DPO vs 3.1=out/tulu3-dpo/dapo_sample500:recommended,out/tulu31-rlvr/dapo_sample500:recommended" "correct only: Think-SFT vs Think-DPO=out/think-sft/dapo_sample500,out/think-dpo/dapo_sample500;correct" "correct only: Think-DPO vs Think RL final=out/think-dpo/dapo_sample500,out/think-main/dapo_sample500;correct" "correct only: Think-SFT vs Think RL final=out/think-sft/dapo_sample500,out/think-main/dapo_sample500;correct" "correct only: RL-Zero 300 vs 2000=out/rlzero-math-step300/dapo_sample500,out/rlzero-math/dapo_sample500;correct" "correct only: Instruct-SFT vs DPO=out/instruct-sft/dapo_sample500:untruncated,out/instruct-dpo/dapo_sample500:untruncated;correct" "correct only: Instruct-DPO vs RL final=out/instruct-dpo/dapo_sample500:untruncated,out/instruct-main/dapo_sample500:untruncated;correct" -->
 | pair (a vs b) | a | b | Fisher, all | first 256 | first 1,024 | first 4,096 | permutation (rates) |
 |---|--:|--:|--:|--:|--:|--:|--:|
 | Think-DPO vs Think RL final | 55.0% | 10.2% | 1e-54 | 3e-12 | 6e-29 | 3e-68 | < 0.00005 |
-| Think-DPO vs RL-Zero 2000 | 55.0% | 58.4% | 0.31 | 6e-41 (Zero higher) | 1e-13 (Zero higher) | 1.00 | 0.060 |
+| Think-DPO vs RL-Zero 2000 | 55.0% | 58.4% | 0.31 | 6e-41 (RL-Zero 2000 higher) | 1e-13 (RL-Zero 2000 higher) | 1.00 | 0.0600 |
 | RL-Zero 2000 vs Think RL final | 58.4% | 10.2% | 9e-62 | 5e-78 | 5e-71 | 3e-65 | < 0.00005 |
 | RL-Zero 300 vs RL-Zero 2000 | 14.6% | 58.4% | 8e-49 | 3e-64 | 1e-60 | 3e-33 | < 0.00005 |
 | Think-SFT vs Think-DPO | 11.8% | 55.0% | 7e-50 | 7e-10 | 4e-31 | 2e-70 | < 0.00005 |
-| Think-SFT vs Think RL final | 11.8% | 10.2% | 0.48 | 0.50 | 0.75 | 0.44 | 0.86 |
-| RL-Zero 2000: DAPO vs AIME | 58.4% | 67.3% | 0.0045 | 0.90 | 0.75 | 0.12 | 0.39 |
-| Think-DPO: DAPO vs AIME | 55.0% | 68.8% | 1e-5 | 0.72 | 0.36 | 0.73 | 0.55 |
-| Think RL final: DAPO vs AIME | 10.2% | 22.9% | 7e-8 | 0.49 | 0.79 | 0.41 | 0.69 |
-| AIME: Think-DPO vs RL-Zero 2000 | 68.8% | 67.3% | 0.68 | 2e-36 (Zero higher) | 2e-9 (Zero higher) | 0.036 (DPO higher) | < 0.00005 |
+| Think-SFT vs Think RL final | 11.8% | 10.2% | 0.48 | 0.50 | 0.75 | 0.44 | 0.8606 |
+| RL-Zero 2000: DAPO vs AIME | 58.4% | 67.3% | 0.0045 | 0.90 | 0.75 | 0.12 | 0.3937 |
+| Think-DPO: DAPO vs AIME | 55.0% | 68.8% | 1e-05 | 0.72 | 0.36 | 0.73 | 0.5484 |
+| Think RL final: DAPO vs AIME | 10.2% | 22.9% | 7e-08 | 0.49 | 0.79 | 0.41 | 0.6939 |
+| AIME: Think-DPO vs RL-Zero 2000 | 68.8% | 67.3% | 0.68 | 2e-36 (RL-Zero 2000 higher) | 2e-09 (RL-Zero 2000 higher) | 0.036 (Think-DPO higher) | < 0.00005 (RL-Zero 2000 higher rate) |
 | AIME: Think-DPO vs Think RL final | 68.8% | 22.9% | 2e-47 | 2e-11 | 1e-30 | 2e-71 | < 0.00005 |
 | AIME: RL-Zero 2000 vs Think RL final | 67.3% | 22.9% | 1e-44 | 9e-72 | 6e-64 | 1e-56 | < 0.00005 |
-| Think RL final: untruncated vs recommended | 10.2% | 2.0% | 4e-8 | 1.00 | 0.12 | 0.0041 | 0.0001 |
-| recommended: Think-DPO vs Think RL final | 15.2% | 2.0% | 1e-14 | 2e-6 | 3e-10 | 5e-20 | < 0.00005 |
+| Think RL final: untruncated vs recommended | 10.2% | 2.0% | 4e-08 | 1.00 | 0.12 | 0.0041 | 0.0001 |
+| recommended: Think-DPO vs Think RL final | 15.2% | 2.0% | 1e-14 | 2e-06 | 3e-10 | 5e-20 | < 0.00005 |
 | Think-DPO: untruncated vs recommended | 55.0% | 15.2% | 5e-41 | 0.059 | 7e-12 | 2e-27 | < 0.00005 |
-| Instruct-SFT vs Instruct-DPO | 3.4% | 21.0% | 1e-18 | 1.00 | 0.49 | — | 0.044 (SFT higher rate) |
-| Instruct-DPO vs Instruct RL final | 21.0% | 6.2% | 6e-12 | 0.021 | 0.0012 | 0.0002 | < 0.00005 |
-| Instruct-SFT vs Instruct RL final | 3.4% | 6.2% | 0.053 | 0.026 (SFT higher) | 0.58 | — | < 0.00005 (SFT higher rate) |
-| recommended: Instruct-SFT vs DPO | 0.4% | 5.0% | 4e-6 | 0.46 | 1.00 | 0.58 | 0.002 |
-| recommended: Instruct-DPO vs RL final | 5.0% | 1.0% | 0.0003 | 1.00 | 0.26 | 0.21 | 0.0037 |
-| recommended: Instruct-SFT vs RL final | 0.4% | 1.0% | 0.45 | 0.46 | 1.00 | 1.00 | 0.51 |
-| Tulu-3-SFT vs Tulu-3-DPO | 5.2% | 3.0% | 0.11 | 1.00 | 0.0039 (SFT higher) | — | 0.013 |
-| Tulu-3-DPO vs Tulu-3 RLVR | 3.0% | 2.8% | 1.00 | 0.69 | 1.00 | — | 0.59 |
-| Tulu-3-SFT vs Tulu-3 RLVR | 5.2% | 2.8% | 0.075 | 0.69 | 0.0010 (SFT higher) | — | 0.0001 |
-| Tulu-3 RLVR vs Tulu-3.1 | 2.8% | 3.4% | 0.72 | 1.00 | 0.044 (RLVR higher) | 1.00 † | 0.86 |
-| Tulu-3-DPO vs Tulu-3.1 | 3.0% | 3.4% | 0.86 | 0.45 | 0.048 (DPO higher) | — | 0.50 |
-| recommended: Tulu SFT vs DPO | 0.6% | 0.8% | 1.00 | 1.00 | 1.00 | 1.00 † | 0.79 |
-| recommended: Tulu DPO vs RLVR | 0.8% | 1.4% | 0.55 | 1.00 | 1.00 | 1.00 † | 0.77 |
-| recommended: Tulu SFT vs RLVR | 0.6% | 1.4% | 0.34 | 0.50 | 0.63 | 1.00 † | 0.56 |
-| recommended: Tulu RLVR vs 3.1 | 1.4% | 2.2% | 0.48 | 0.69 | 0.45 | 1.00 † | 0.21 |
-| recommended: Tulu DPO vs 3.1 | 0.8% | 2.2% | 0.12 | 0.37 | 0.71 | 1.00 † | 0.43 |
-| correct only: Think-SFT vs Think-DPO | 9.2% | 54.2% | 2e-53 | 6e-9 | 2e-28 | 1e-64 | < 0.00005 |
+| Instruct-SFT vs Instruct-DPO | 3.4% | 21.0% | 1e-18 | 1.00 | 0.49 | — | 0.0440 (Instruct-SFT higher rate) |
+| Instruct-DPO vs Instruct RL final | 21.0% | 6.2% | 6e-12 | 0.021 | 0.0012 | 2e-04 | < 0.00005 |
+| Instruct-SFT vs Instruct RL final | 3.4% | 6.2% | 0.053 | 0.026 (Instruct-SFT higher) | 0.58 | — | < 0.00005 (Instruct-SFT higher rate) |
+| recommended: Instruct-SFT vs DPO | 0.4% | 5.0% | 4e-06 | 0.46 | 1.00 | 0.58 | 0.0020 |
+| recommended: Instruct-DPO vs RL final | 5.0% | 1.0% | 3e-04 | 1.00 | 0.26 | 0.21 | 0.0037 |
+| recommended: Instruct-SFT vs RL final | 0.4% | 1.0% | 0.45 | 0.46 | 1.00 | 1.00 | 0.5118 |
+| Tulu-3-SFT vs Tulu-3-DPO | 5.2% | 3.0% | 0.11 | 1.00 | 0.0039 (Tulu-3-SFT higher) | — | 0.0127 |
+| Tulu-3-DPO vs Tulu-3 RLVR | 3.0% | 2.8% | 1.00 | 0.69 | 1.00 | — | 0.5925 |
+| Tulu-3-SFT vs Tulu-3 RLVR | 5.2% | 2.8% | 0.075 | 0.69 | 0.0010 (Tulu-3-SFT higher) | — | 0.0001 |
+| Tulu-3 RLVR vs Tulu-3.1 | 2.8% | 3.4% | 0.72 | 1.00 | 0.044 (Tulu-3 RLVR higher) | 1.00 † | 0.8598 |
+| Tulu-3-DPO vs Tulu-3.1 | 3.0% | 3.4% | 0.86 | 0.45 | 0.048 (Tulu-3-DPO higher) | — | 0.5020 |
+| recommended: Tulu SFT vs DPO | 0.6% | 0.8% | 1.00 | 1.00 | 1.00 | 1.00 † | 0.7859 |
+| recommended: Tulu DPO vs RLVR | 0.8% | 1.4% | 0.55 | 1.00 | 1.00 | 1.00 † | 0.7732 |
+| recommended: Tulu SFT vs RLVR | 0.6% | 1.4% | 0.34 | 0.50 | 0.63 | 1.00 † | 0.5608 |
+| recommended: Tulu RLVR vs 3.1 | 1.4% | 2.2% | 0.48 | 0.69 | 0.45 | 1.00 † | 0.2086 |
+| recommended: Tulu DPO vs 3.1 | 0.8% | 2.2% | 0.12 | 0.37 | 0.71 | 1.00 † | 0.4335 |
+| correct only: Think-SFT vs Think-DPO | 9.2% | 54.2% | 2e-53 | 6e-09 | 2e-28 | 1e-64 | < 0.00005 |
 | correct only: Think-DPO vs Think RL final | 54.2% | 9.3% | 5e-54 | 9e-12 | 3e-27 | 9e-65 | < 0.00005 |
-| correct only: Think-SFT vs Think RL final | 9.2% | 9.3% | 1.00 | 0.24 | 0.75 | 0.56 | 0.61 |
+| correct only: Think-SFT vs Think RL final | 9.2% | 9.3% | 1.00 | 0.24 | 0.75 | 0.56 | 0.6143 |
 | correct only: RL-Zero 300 vs 2000 | 13.3% | 56.5% | 4e-43 | 7e-56 | 2e-54 | 1e-27 | 0.0001 |
-| correct only: Instruct-SFT vs DPO | 3.8% | 15.5% | 0.0002 | 0.71 | 1.00 | — | 0.0024 |
-| correct only: Instruct-DPO vs RL final | 15.5% | 5.4% | 2e-6 | 0.025 | 0.0013 | 0.0024 | < 0.00005 |
+| correct only: Instruct-SFT vs DPO | 3.8% | 15.5% | 2e-04 | 0.71 | 1.00 | — | 0.0024 (Instruct-SFT higher rate) |
+| correct only: Instruct-DPO vs RL final | 15.5% | 5.4% | 2e-06 | 0.025 | 0.0013 | 0.0023 | < 0.00005 |
+<!-- end generated -->
 
 Cells marked — have no rollouts that long in one cell (Instruct-SFT and
 Tulu answers are short); † marks windows with fewer than 10 eligible
@@ -1167,20 +1201,15 @@ uv run python -m noncanon.compare out/tulu3-rlvr/dapo_sample500 out/tulu31-rlvr/
 uv run python -m noncanon.compare out/tulu3-dpo/dapo_sample500 out/tulu31-rlvr/dapo_sample500 --arm untruncated
 ```
 
-Summary tables (the Summary section at the top of this file):
+Generated tables. Every table in the Summary and Rollout-level reanalysis
+sections sits between a "generated" HTML comment carrying the exact command
+that produced it and an "end generated" comment. To verify all of them
+against the metrics under `out/` (exit 1 with a diff on any mismatch), or to
+regenerate them after a code change:
 
 ```
-uv run python -m noncanon.summary --arm untruncated ladder \
-    "OLMo-3 Think:SFT=out/think-sft/dapo_sample500" "OLMo-3 Think:DPO=out/think-dpo/dapo_sample500" "OLMo-3 Think:RL final=out/think-main/dapo_sample500" \
-    "OLMo-3 RL-Zero-Math:step 300=out/rlzero-math-step300/dapo_sample500" "OLMo-3 RL-Zero-Math:step 2000 (final)=out/rlzero-math/dapo_sample500" \
-    "OLMo-3 Instruct:SFT=out/instruct-sft/dapo_sample500" "OLMo-3 Instruct:DPO=out/instruct-dpo/dapo_sample500" "OLMo-3 Instruct:RL final=out/instruct-main/dapo_sample500" \
-    "Tulu-3-8B:SFT=out/tulu3-sft/dapo_sample500" "Tulu-3-8B:DPO=out/tulu3-dpo/dapo_sample500" "Tulu-3-8B:RLVR (PPO)=out/tulu3-rlvr/dapo_sample500" "Tulu-3-8B:3.1 RLVR (GRPO)=out/tulu31-rlvr/dapo_sample500"
-uv run python -m noncanon.summary --arm untruncated pairs --labels DAPO AIME \
-    "OLMo-3 Think-DPO=out/think-dpo/dapo_sample500,out/think-dpo/aime_2024_2025" "OLMo-3 Think RL final=out/think-main/dapo_sample500,out/think-main/aime_2024_2025" "OLMo-3 RL-Zero-Math final=out/rlzero-math/dapo_sample500,out/rlzero-math/aime_2024_2025"
-uv run python -m noncanon.summary pairs --labels untruncated recommended \
-    "OLMo-3 Think-DPO=out/think-dpo/dapo_sample500:untruncated,out/think-dpo-recommended/dapo_sample500:recommended" "OLMo-3 Think RL final=out/think-main/dapo_sample500:untruncated,out/think-main-recommended/dapo_sample500:recommended" \
-    "OLMo-3 Instruct-SFT=out/instruct-sft/dapo_sample500:untruncated,out/instruct-sft/dapo_sample500:recommended" "OLMo-3 Instruct-DPO=out/instruct-dpo/dapo_sample500:untruncated,out/instruct-dpo/dapo_sample500:recommended" "OLMo-3 Instruct RL final=out/instruct-main/dapo_sample500:untruncated,out/instruct-main/dapo_sample500:recommended" \
-    "Tulu-3-SFT=out/tulu3-sft/dapo_sample500:untruncated,out/tulu3-sft/dapo_sample500:recommended" "Tulu-3-DPO=out/tulu3-dpo/dapo_sample500:untruncated,out/tulu3-dpo/dapo_sample500:recommended" "Tulu-3 RLVR=out/tulu3-rlvr/dapo_sample500:untruncated,out/tulu3-rlvr/dapo_sample500:recommended" "Tulu-3.1=out/tulu31-rlvr/dapo_sample500:untruncated,out/tulu31-rlvr/dapo_sample500:recommended"
+uv run python scripts/check_results.py
+uv run python scripts/check_results.py --write
 ```
 
 Tail depth, emitted-token ranks and bare-space spans:

@@ -21,7 +21,10 @@ pair of run directories (each holding ``metrics/analysis.jsonl``), in order:
 
 ``--outcome`` restricts both cells to one outcome bucket (correct,
 incorrect, parsed = correct + incorrect, unparsed, truncated).
-``--table`` prints the rollout-level numbers of every run directory given.
+``--table`` prints the rollout-level numbers of every run directory given
+(``label=run_dir[:arm]``); ``--pairs`` prints the pairwise-test table for
+``"A vs B=run_a[:arm],run_b[:arm][;outcome]"`` specs. Both are the
+generated blocks of RESULTS.md, checked by ``scripts/check_results.py``.
 Deterministic and order-invariant: each cell's bootstrap and the permutation
 test get their own seeded generator; permutation p is "< 1/B" when no
 permutation reached the observed difference.
@@ -135,12 +138,24 @@ def token_test(a, b) -> tuple[float, float]:
     return float(z), erfc(abs(z) / sqrt(2))
 
 
-# --- CLI ----------------------------------------------------------------------------
-def print_table(runs: list[Path], arm: str | None, outcome_filter: str) -> None:
+# --- tables (the generated blocks in RESULTS.md) -------------------------------------
+def parse_spec(spec: str, default_arm: str | None) -> tuple[str, Path, str | None]:
+    """``[label=]run_dir[:arm]`` → (label, run_dir, arm); the label defaults to the run_dir."""
+    label, _, cell = spec.rpartition("=")
+    run, _, arm = cell.partition(":")
+    return label or run, Path(run), arm or default_arm
+
+
+def fmt_p(p: float) -> str:
+    return f"{p:.0e}" if p < 0.001 else (f"{p:.4f}" if p < 0.01 else (f"{p:.3f}" if p < 0.1 else f"{p:.2f}"))
+
+
+def print_table(specs: list[str], arm: str | None, outcome_filter: str) -> None:
     print("| cell | rollouts | with ≥1 event | Wilson 95% | " + " | ".join(f"within first {L} (of those ≥ {L})" for L in SEQ_LENGTHS) + " | per-token rate |")
     print("|---|--:|--:|---|" + "---|" * len(SEQ_LENGTHS) + "--:|")
-    for run in runs:
-        rows = load_rows(run, arm, outcome_filter)
+    for spec in specs:
+        label, run, cell_arm = parse_spec(spec, arm)
+        rows = load_rows(run, cell_arm, outcome_filter)
         k, n = flags(rows)
         lo, hi = wilson(k, n)
         cells = []
@@ -149,22 +164,74 @@ def print_table(runs: list[Path], arm: str | None, outcome_filter: str) -> None:
             cells.append(f"{kL}/{nL} = {100 * kL / nL:.1f}%" + ("" if nL >= MIN_ELIGIBLE else " †") if nL else "—")
         rate = sum(r["nc_events"] for r in rows) / max(1, sum(r["n_units"] for r in rows))
         frac = f"{k} ({100 * k / n:.1f}%)" if n else "0 (n/a)"
-        print(f"| {run} | {n} | {frac} | {100 * lo:.1f}–{100 * hi:.1f}% | " + " | ".join(cells) + f" | {100 * rate:.4f}% |")
+        print(f"| {label} | {n} | {frac} | {100 * lo:.1f}–{100 * hi:.1f}% | " + " | ".join(cells) + f" | {100 * rate:.4f}% |")
+
+
+def print_pairs(specs: list[str], arm: str | None, seed: int) -> None:
+    """One row per ``"A vs B=run_a[:arm],run_b[:arm][;outcome]"`` (an optional ``prefix: `` before ``A vs B`` is kept in the label).
+
+    Columns: flagged fraction of each cell; Fisher exact p overall and within
+    each window; the per-rollout permutation p on pooled per-token rates
+    (headline convention). A window result whose direction differs from the
+    overall one, or where the overall test is not significant, is annotated
+    with the higher cell; the permutation p is annotated when its direction
+    differs from the flag direction.
+    """
+    print("| pair (a vs b) | a | b | Fisher, all | " + " | ".join(f"first {L:,}" for L in SEQ_LENGTHS) + " | permutation (rates) |")
+    print("|---|--:|--:|--:|" + "--:|" * len(SEQ_LENGTHS) + "--:|")
+    for spec in specs:
+        label, _, rest = spec.partition("=")
+        cells, _, outcome_filter = rest.partition(";")
+        outcome_filter = outcome_filter or "all"
+        names = label.rsplit(": ", 1)[-1].split(" vs ")
+        assert len(names) == 2, f"label must read 'A vs B': {label}"
+        (_, run_a, arm_a), (_, run_b, arm_b) = (parse_spec(c, arm) for c in cells.split(","))
+        ra, rb = load_rows(run_a, arm_a, outcome_filter), load_rows(run_b, arm_b, outcome_filter)
+        (k1, n1), (k2, n2) = flags(ra), flags(rb)
+        p_all = fisher_exact(k1, n1, k2, n2)
+        higher_all = k2 / n2 > k1 / n1
+        out = [f"{100 * k1 / n1:.1f}%", f"{100 * k2 / n2:.1f}%", fmt_p(p_all)]
+        for L in SEQ_LENGTHS:
+            (a1, m1), (a2, m2) = flags(ra, L), flags(rb, L)
+            if not (m1 and m2):
+                out.append("—")
+                continue
+            p = fisher_exact(a1, m1, a2, m2)
+            cell = fmt_p(p) + (" †" if min(m1, m2) < MIN_ELIGIBLE else "")
+            higher = a2 / m2 > a1 / m1
+            if p < 0.05 and (higher != higher_all or p_all >= 0.05):
+                cell += f" ({names[higher]} higher)"
+            out.append(cell)
+        A = (np.array([r["nc_events"] for r in ra]), np.array([r["n_units"] for r in ra]))
+        B_ = (np.array([r["nc_events"] for r in rb]), np.array([r["n_units"] for r in rb]))
+        diff, hits, B = permutation_test(A, B_, seed=[seed, 1])
+        perm = f"< {1 / B:.5f}" if hits == 0 else f"{hits / B:.4f}"
+        if hits / B < 0.05 and (diff > 0) != higher_all:
+            perm += f" ({names[diff > 0]} higher rate)"
+        out.append(perm)
+        print(f"| {label} | " + " | ".join(out) + " |")
+
+
+# --- CLI ----------------------------------------------------------------------------
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("runs", type=Path, nargs="+", help="two run directories (a b), or any number with --table")
+    ap.add_argument("runs", nargs="+", help="two run directories (a b); with --table any number of [label=]run_dir[:arm]; with --pairs 'A vs B=run_a,run_b[;outcome]' specs")
     ap.add_argument("--arm", default=None, help="restrict to one sampling arm when a run directory holds several")
     ap.add_argument("--outcome", default="all", choices=list(OUTCOMES), help="restrict to one outcome bucket")
     ap.add_argument("--table", action="store_true", help="print rollout-level numbers for every run given, no tests")
+    ap.add_argument("--pairs", action="store_true", help="print the pairwise-test table for the pair specs given")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if args.table:
         print_table(args.runs, args.arm, args.outcome)
         return
-    assert len(args.runs) == 2, "pass exactly two run directories (or --table)"
-    a, b = args.runs
+    if args.pairs:
+        print_pairs(args.runs, args.arm, args.seed)
+        return
+    assert len(args.runs) == 2, "pass exactly two run directories (or --table / --pairs)"
+    a, b = map(Path, args.runs)
     ra, rb = load_rows(a, args.arm, args.outcome), load_rows(b, args.arm, args.outcome)
     print(f"== rollouts with ≥1 non-canonical event (outcome: {args.outcome}) ==")
     print(rollout_line(str(a), ra))

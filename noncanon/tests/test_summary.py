@@ -45,3 +45,32 @@ def test_p_str_thresholds():
     assert summary.fmt_p(1e-12) == "< 1e-10" and summary.fmt_p(0.00042) == "4.2e-04" and summary.fmt_p(0.0479) == "0.048"
     assert float(summary.omnibus([(5, 50), (25, 50), (3, 50)])) < 1e-6
     assert summary.omnibus([(0, 50), (0, 50)]) == "—"
+
+
+def test_check_results_diffs_and_rewrites_generated_blocks(tmp_path):
+    import subprocess, sys
+    md = tmp_path / "R.md"
+    md.write_text("intro\n<!-- generated: echo one; \\\n    echo two -->\nstale\n<!-- end generated -->\ntail\n")
+    script = str(__import__("pathlib").Path(__file__).resolve().parents[2] / "scripts" / "check_results.py")
+    r = subprocess.run([sys.executable, script, "--file", str(md)], capture_output=True, text=True)
+    assert r.returncode == 1 and "MISMATCH" in r.stdout and "-stale" in r.stdout and "+two" in r.stdout
+    r = subprocess.run([sys.executable, script, "--file", str(md), "--write"], capture_output=True, text=True)
+    assert r.returncode == 0 and md.read_text() == "intro\n<!-- generated: echo one; \\\n    echo two -->\none\ntwo\n<!-- end generated -->\ntail\n"
+    r = subprocess.run([sys.executable, script, "--file", str(md)], capture_output=True, text=True)
+    assert r.returncode == 0 and "all 1 generated blocks match" in r.stdout
+
+
+def test_pairwise_table_annotates_direction_changes(tmp_path, capsys):
+    from noncanon import compare
+
+    # a: few flags overall, all early; b: many flags, all late → overall b higher, within 256 a higher.
+    a = write_cell(tmp_path, "a", "untruncated", [1] * 10 + [0] * 90, [True] * 100)
+    b = write_cell(tmp_path, "b", "untruncated", [1] * 60 + [0] * 40, [True] * 100)
+    for d, pos in ((a, 50), (b, 900)):
+        lines = (d / "metrics" / "analysis.jsonl").read_text().replace("[100]", f"[{pos}]")
+        (d / "metrics" / "analysis.jsonl").write_text(lines)
+    compare.print_pairs([f"A vs B={a},{b}", f"correct only: A vs B={a},{b};correct"], "untruncated", seed=0)
+    rows = [l for l in capsys.readouterr().out.splitlines() if " vs B |" in l]
+    assert rows[0].startswith("| A vs B | 10.0% | 60.0% | ") and "(A higher)" in rows[0] and "(B higher)" not in rows[0]
+    assert rows[1].startswith("| correct only: A vs B | 10.0% | 60.0% |")
+    assert compare.fmt_p(1.07e-54) == "1e-54" and compare.fmt_p(0.0045) == "0.0045" and compare.fmt_p(0.0253) == "0.025" and compare.fmt_p(0.31) == "0.31"
