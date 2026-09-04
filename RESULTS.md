@@ -461,6 +461,74 @@ the RL-Zero-Math run the rate rises from step 300 to step 2000, by about
 the opposite direction from the Think track, where the RL final checkpoint
 sits below its DPO starting point.
 
+### DAPO 500, Think-SFT (prediction 13)
+
+`allenai/Olmo-3-7B-Think-SFT` @ `main`. 500 rollouts, all stop; think
+closed 500 / 500; accuracy (finished, parsed) 97.5%; excluded 3 tokens
+incomplete UTF-8. Length: mean 8,231, median 7,014, p90 13,810, max
+30,996. Headline rate **0.0030%** (123 of 4,115,568 units; 71 spans, 3
+fragments; 59 / 500 rollouts with ≥1 event; shapes whitespace 6 /
+alphabetic 28 / symbolic 37); segmentation only 0.0029%. Think 123 /
+3,853,668 (0.0032%), answer 0 / 261,922. Entropy (top-10) 0.571 all
+positions, 1.097 at non-canonical positions. Rollout-bootstrap 95% CI
+0.0022–0.0038%.
+
+The Think ladder on DAPO 500, headline rule:
+
+| stage | rate | 95% CI | rollouts with ≥1 event |
+|---|--:|---|--:|
+| SFT | 0.0030% | 0.0022–0.0038% | 59 / 500 |
+| DPO | 0.0186% | 0.0164–0.0210% | 275 / 500 |
+| RL final | 0.0034% | 0.0019–0.0058% | 51 / 500 |
+
+SFT − DPO: −0.0156 pp, per-token z = 21.6 (p < 1e-15), per-rollout
+p < 0.0002 (segmentation only: −0.0131 pp, z = 19.3, p < 0.0002).
+SFT vs RL final: +0.0005 pp, per-token z = 1.2 (p = 0.24), per-rollout
+p = 0.86 (segmentation only: z = 1.1, p = 0.27; per-rollout 0.88).
+
+**Prediction status.** Prediction 13 (SFT above DPO because it has less
+training): **refuted**; SFT is 6× below DPO and indistinguishable from RL
+final. Prediction 4 (SFT ≈ DPO): refuted in the same cell; the DPO stage
+is where the rate rises within this ladder, and the RL stage is where it
+falls back.
+
+### AIME 2024/2025, Think RL final (completes the AIME comparison)
+
+480 rollouts: 426 stop, 54 length; think closed 428 / 480; accuracy
+(finished, parsed) 78.6%; excluded 8 tokens incomplete UTF-8, 148 cut last
+word. Length: mean 19,127, median 18,550, p90 32,761, max 32,767. Headline
+rate **0.0039%** (355 of 9,180,693 units; 201 spans, 8 fragments; 110 / 480
+rollouts with ≥1 event; shapes whitespace 1 / alphabetic 103 / symbolic
+97); segmentation only 0.0038%. Think 353 / 8,916,561 (0.0040%), answer
+2 / 264,186 (0.0008%). Entropy 0.423 all positions, 0.910 at non-canonical
+positions. Rollout-bootstrap 95% CI 0.0029–0.0049%.
+
+AIME, all three checkpoints, headline rule:
+
+| checkpoint | rate | 95% CI | rollouts with ≥1 event | accuracy |
+|---|--:|---|--:|--:|
+| Think RL final | 0.0039% | 0.0029–0.0049% | 110 / 480 | 78.6% |
+| Think-DPO | 0.0177% | 0.0157–0.0197% | 330 / 480 | 80.7% |
+| RL-Zero-Math | 0.0273% | 0.0222–0.0330% | 323 / 480 | 34.9% |
+
+Tests on AIME: RL final − DPO = −0.0138 pp, per-token z = 28.2, per-rollout
+p < 0.0002 (segmentation only −0.0120 pp, z = 25.8, p < 0.0002). RL final −
+Zero = −0.0234 pp, z = 38.5, per-rollout p < 0.0002 (segmentation only
+−0.0235 pp, z = 38.8). Zero − DPO on AIME was reported above.
+
+Within-model AIME − DAPO for Think RL final: +0.0004 pp, per-token z = 1.2
+(p = 0.22), per-rollout p = 0.69 (segmentation only: z = 1.3, p = 0.19;
+per-rollout 0.68).
+
+**Prediction status (AIME cell).** Prediction 3: refuted on AIME as on
+DAPO (RL final about 4.5× below DPO). Prediction 10 (AIME slightly higher
+than DAPO): the direction is as predicted for all three checkpoints
+(Think +0.0004 pp, DPO −0.0010 pp is the exception, Zero +0.0035 pp) and
+none of the within-model differences is distinguishable at the rollout
+level. Prediction 5 (higher inside the CoT), descriptive: Think RL final
+think 0.0040% vs answer 0.0008% on AIME, 0.0035% vs 0.0025% on DAPO;
+DPO 0.0179% vs 0.0136% on AIME.
+
 ## Reproduction
 
 Every number above comes from these commands, run from a clean checkout
@@ -510,6 +578,11 @@ uv run python -m noncanon.compare out/rlzero-math/dapo_sample500 out/rlzero-math
 uv run python -m noncanon.compare out/think-dpo/dapo_sample500 out/think-dpo/aime_2024_2025
 uv run python -m noncanon.compare out/think-dpo/aime_2024_2025 out/rlzero-math/aime_2024_2025
 uv run python -m noncanon.compare out/rlzero-math-step300/dapo_sample500 out/rlzero-math/dapo_sample500
+uv run python -m noncanon.compare out/think-sft/dapo_sample500 out/think-dpo/dapo_sample500
+uv run python -m noncanon.compare out/think-sft/dapo_sample500 out/think-main/dapo_sample500
+uv run python -m noncanon.compare out/think-main/dapo_sample500 out/think-main/aime_2024_2025
+uv run python -m noncanon.compare out/think-dpo/aime_2024_2025 out/think-main/aime_2024_2025
+uv run python -m noncanon.compare out/rlzero-math/aime_2024_2025 out/think-main/aime_2024_2025
 ```
 
 Tail depth, emitted-token ranks and bare-space spans:
