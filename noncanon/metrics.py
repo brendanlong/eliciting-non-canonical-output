@@ -99,6 +99,7 @@ class Analyzer:
         # all_special_ids covers only eos/pad on OLMo-3; <|im_start|>, <|im_end|>
         # and the other control tokens are "added tokens" not flagged special.
         self.special = set(self.tok.all_special_ids) | set(self.tok.added_tokens_decoder)
+        self.vocab_size = len(self.tok)  # len() on a fast tokenizer rebuilds the vocab each call; cache it
 
     def token_bytes(self, ids: list[int]) -> list[bytes]:
         """Exact bytes of each token (byte-level BPE maps one char per byte).
@@ -115,7 +116,7 @@ class Analyzer:
         return out
 
     def is_oov(self, t: int) -> bool:
-        return t >= len(self.tok)
+        return t >= self.vocab_size
 
     def piece(self, t: int) -> str:
         return self.tok.decode([t], skip_special_tokens=False, clean_up_tokenization_spaces=False)
