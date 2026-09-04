@@ -136,6 +136,15 @@ def test_truncated_rollout_drops_its_last_word(an):
     assert b["excluded_truncated"] == 0 and b["n_tokens"] == len(ids)
 
 
+def test_truncated_tail_without_whitespace_loses_at_most_a_few_tokens(an):
+    # A long Chinese passage has no whitespace tokens; the cut must not
+    # discard it all the way back to the last space.
+    ids = enc(an, "Therefore") + enc(an, "我们需要计算这个数列的前一百项的和然后再减去所有偶数项的贡献最后得到答案是")
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", ids, finish="length"))
+    assert 1 <= a["excluded_truncated"] <= 8
+    assert a["n_tokens"] >= len(ids) - 8
+
+
 def test_verifier_formats():
     assert extract_boxed(r"so \boxed{\frac{1}{2}} then \boxed{1,234}") == "1,234"
     assert extract_boxed(r"\boxed{\text{42}}") == r"\text{42}"

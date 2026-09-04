@@ -353,12 +353,19 @@ def ordinary_runs(ids: list[int], special: set[int]):
             start = i
 
 
+MAX_CUT_TOKENS = 8
+
+
 def last_word_start(chunks: list[bytes]) -> int:
-    """Index of the last token that begins with whitespace (the start of the last word)."""
-    for i in range(len(chunks) - 1, -1, -1):
+    """Index of the last token that begins with whitespace (the start of the
+    last word), looking back at most MAX_CUT_TOKENS tokens. A truncated tail
+    with no whitespace token in that window (a CJK passage, a symbol loop)
+    just loses its last MAX_CUT_TOKENS tokens rather than everything back
+    to the previous space."""
+    for i in range(len(chunks) - 1, max(-1, len(chunks) - 1 - MAX_CUT_TOKENS), -1):
         if chunks[i].startswith(WHITESPACE_BYTES):
             return i
-    return len(chunks)
+    return max(0, len(chunks) - MAX_CUT_TOKENS)
 
 
 def topk_entropy(topk_logprobs: list[list[float]]) -> np.ndarray:

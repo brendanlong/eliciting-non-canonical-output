@@ -444,6 +444,26 @@ lower temperature or truncation.
     reversal, Think RL final above DPO under the recommended settings,
     is possible.
 
+## Added after the Think-SFT and step-300 cells (Brendan, 2026-09-03)
+
+The ladder results are strange: SFT and RL final are level and 6× below
+DPO, while within the Zero run the rate rises 3× from step 300 to step
+2000. Two readings, both recorded:
+
+- **Noise.** The non-canonical rate may fluctuate semi-randomly between
+  about 0.01% and 0.02% over training, in which case these cells are
+  pulling signal out of random fluctuation. Against this: the same
+  orderings hold on two different prompt sets (DAPO and AIME), which
+  points to something really in the model.
+- **Two processes.** Everything seen so far is consistent with (a)
+  something about DPO making the long tail of the model less confident,
+  which produces the bare-space-then-tail-token spans, and (b) a separate
+  process, the one originally predicted, by which the model *confidently*
+  predicts non-canonical tokens more often the longer on-policy RL runs.
+  Testable on existing data: the argmax-start span rate should rise with
+  on-policy RL (Zero step 300 → 2000; Think SFT → RL final), while the
+  tail-start span rate should track DPO.
+
 ## Follow-ups under consideration
 
 - **Downstream divergence at non-canonical spans** (added 2026-09-03).
