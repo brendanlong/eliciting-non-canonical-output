@@ -18,8 +18,8 @@ across all its stages ("do the stages differ at all"), under which the
 pairwise p-values are post-hoc. The per-token rate is the preregistered
 metric, reported but secondary. Every DAPO cell is 500 rollouts on the
 same 500 held-out problems (one sample each); AIME is 60 problems × 8
-samples. Tables are the output of `noncanon.summary` (commands in the
-Reproduction section).
+samples. Each table is the output of the command shown in its "Generated
+by" block, verified by `scripts/check_results.py` (see Reproduction).
 
 ### 1. Training stages, DAPO, temperature 1 / top-p 1
 
@@ -61,7 +61,7 @@ starts from the base model with no DPO, rises 4× from step 300 to step
 2000. On Tulu-3 no adjacent or first-vs-later stage differs on all
 rollouts (p ≥ 0.075; omnibus p = 0.16), its correct buckets (20–87
 rollouts, 0–2 events) do not support a correct-only comparison, and the
-one significant Tulu omnibus (within 1,024 tokens, p = 1e-6) is the SFT
+one significant Tulu omnibus (within 1,024 tokens, p = 1e-06) is the SFT
 word-salad rollouts (13.2% vs ≤ 3.6%). For the OLMo-3 tracks the
 correct-only columns give the same orderings as the all-rollout columns.
 
