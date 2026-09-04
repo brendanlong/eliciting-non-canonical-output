@@ -136,6 +136,19 @@ def test_truncated_rollout_drops_its_last_word(an):
     assert b["excluded_truncated"] == 0 and b["n_tokens"] == len(ids)
 
 
+def test_out_of_vocabulary_id_is_its_own_event(an):
+    # An id beyond the tokenizer (a padding row of the LM head) has no text;
+    # the words around it are still measured and it counts as one event.
+    oov = len(an.tok) + 5
+    left, right = enc(an, "The quick brown fox"), enc(an, " jumps over the lazy dog")
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", left + [oov] + right))
+    assert a["excluded_oov"] == 1 and a["excluded_utf8"] == 0
+    assert a["n_tokens"] == len(left) + len(right) and a["nc_canonical"] == 0
+    assert a["fragment_events"] == 1 and a["fragment_events_standalone"] == 1 and a["nc_events"] == 1
+    assert a["spans"][0]["shape"] == "oov-id" and a["spans"][0]["emitted"] == [f"⟨id {oov}⟩"]
+    assert "⟨id" in a["transcript"] or "jumps" in a["transcript"]
+
+
 def test_truncated_tail_without_whitespace_loses_at_most_a_few_tokens(an):
     # A long Chinese passage has no whitespace tokens; the cut must not
     # discard it all the way back to the last space.
@@ -175,7 +188,7 @@ def test_summarize_denominators():
             "nc_canonical": len(nc_positions), "nc_events": len(nc_positions), "nc_emitted": len(nc_positions), "nc_events_think": 0,
             "nc_spans": len(nc_positions), "nc_positions": nc_positions, "nc_classes": {}, "all_classes": {"word": n},
             "seq_flags": {str(L): any(p < L for p in nc_positions) for L in (256, 1024, 4096)},
-            "excluded_utf8": 0, "excluded_truncated": 0, "finish_reason": finish, "correct": correct,
+            "excluded_utf8": 0, "excluded_oov": 0, "excluded_truncated": 0, "finish_reason": finish, "correct": correct,
             "think_closed": None, "entropy_mean": 0.5, "entropy_at_nc": [], "span_shapes": {}, "fragment_events": 0, "fragment_events_standalone": 0, "transcript": "",
         }
 

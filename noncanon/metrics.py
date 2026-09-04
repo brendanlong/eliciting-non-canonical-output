@@ -85,6 +85,7 @@ class Span:
 class Rollout:
     ids: list[int]
     excluded_utf8: int = 0  # tokens whose bytes are not valid UTF-8 (cut mid-character, or garbage)
+    excluded_oov: int = 0  # ids beyond the tokenizer's vocabulary (padding rows of the LM head)
     excluded_truncated: int = 0  # trailing tokens dropped because the cap cut a word
     spans: list[Span] = field(default_factory=list)
     n_canonical: int = 0  # canonical tokens over all measured runs
@@ -100,11 +101,21 @@ class Analyzer:
         self.special = set(self.tok.all_special_ids) | set(self.tok.added_tokens_decoder)
 
     def token_bytes(self, ids: list[int]) -> list[bytes]:
-        """Exact bytes of each token (byte-level BPE maps one char per byte)."""
+        """Exact bytes of each token (byte-level BPE maps one char per byte).
+
+        An id the tokenizer cannot name (sampled from a padding row of the LM
+        head, beyond the vocabulary) has no bytes and yields ``b""``.
+        """
         out = []
         for t, s in zip(ids, self.tok.convert_ids_to_tokens(ids)):
-            out.append(s.encode() if t in self.special else bytes(_BYTE_DECODER[c] for c in s))
+            if s is None:
+                out.append(b"")
+            else:
+                out.append(s.encode() if t in self.special else bytes(_BYTE_DECODER[c] for c in s))
         return out
+
+    def is_oov(self, t: int) -> bool:
+        return t >= len(self.tok)
 
     def piece(self, t: int) -> str:
         return self.tok.decode([t], skip_special_tokens=False, clean_up_tokenization_spaces=False)
@@ -148,7 +159,14 @@ class Analyzer:
             cut = last_word_start(self.token_bytes(ids))
             r.excluded_truncated = len(ids) - cut
             ids = ids[:cut]
-        for offset, run in ordinary_runs(ids, self.special):
+        # Out-of-vocabulary ids are not text: they end a run, are excluded from
+        # the measurement, and are reported as their own fragment class.
+        oov = {i for i, t in enumerate(ids) if self.is_oov(t)}
+        for i in sorted(oov):
+            r.fragments.append((i, [ids[i]]))
+            r.excluded.add(i)
+        r.excluded_oov = len(oov)
+        for offset, run in ordinary_runs(ids, self.special | {ids[i] for i in oov}):
             kept = set()
             for s, e in decodable_segments(self.token_bytes(run)):
                 kept.update(range(s, e))
@@ -185,6 +203,7 @@ class Analyzer:
         measured = [i for i, t in enumerate(ids) if t not in self.special and i not in r.excluded]
         ordinal = {i: k for k, i in enumerate(measured)}
         pieces = {i: self.piece(ids[i]) for i in measured}
+        all_bytes = self.token_bytes(ids)  # recomputed: OOV ids contribute no bytes
         classes = {i: token_class(pieces[i]) for i in measured}
 
         nc_emitted = [i for s in r.spans for i in range(s.start, s.start + len(s.emitted))]
@@ -206,17 +225,18 @@ class Analyzer:
         # separate byte tokens and never completed it (or emitted stray bytes).
         # These bytes have no text form, so they cannot be scored canonical or
         # not; they are reported as their own event class.
-        for start, frag_ids in r.fragments:
+        for start, frag_ids in sorted(r.fragments):
+            is_oov = any(self.is_oov(t) for t in frag_ids)
             spans_out.append(
                 {
                     "pos": start,
                     "region": region(start),
-                    "emitted": [self.piece(t) for t in frag_ids],
+                    "emitted": [f"⟨id {t}⟩" if self.is_oov(t) else self.piece(t) for t in frag_ids],
                     "emitted_bytes": [self.token_bytes([t])[0].hex() for t in frag_ids],
                     "canonical": None,
                     "context": b"".join(all_bytes[max(0, start - 8) : start]).decode(errors="replace"),
-                    "classes": ["fragment"] * len(frag_ids),
-                    "shape": "byte-fragment",
+                    "classes": ["oov" if is_oov else "fragment"] * len(frag_ids),
+                    "shape": "oov-id" if is_oov else "byte-fragment",
                 }
             )
         # Counting rule for fragments (Brendan, 2026-09-03): a fragment adjacent
@@ -261,6 +281,7 @@ class Analyzer:
             "all_classes": Counter(classes.values()),
             "seq_flags": {str(L): any(ordinal[i] < L for i in nc_emitted) for L in SEQ_LENGTHS},
             "excluded_utf8": r.excluded_utf8,
+            "excluded_oov": r.excluded_oov,
             "excluded_truncated": r.excluded_truncated,
             "pred": pred,
             "correct": correct,
@@ -476,6 +497,7 @@ def summarize(rows: list[dict]) -> dict:
         "finish_reasons": dict(Counter(r["finish_reason"] for r in rows)),
         "think_closed": dict(Counter(str(r["think_closed"]) for r in rows)),
         "excluded_utf8": sum(r["excluded_utf8"] for r in rows),
+        "excluded_oov": sum(r.get("excluded_oov", 0) for r in rows),
         "excluded_truncated": sum(r["excluded_truncated"] for r in rows),
         "emitted_tokens": sum(r["n_tokens"] for r in rows),
         "canonical_tokens": canonical,
@@ -525,7 +547,7 @@ def to_markdown(name: str, s: dict) -> str:
         "",
         f"- rollouts: {s['rollouts']}; finish: {s['finish_reasons']}; think closed: {s['think_closed']}; "
         f"accuracy (finished, parsed): {_pct(s['accuracy'])}; excluded tokens: {s['excluded_utf8']} incomplete UTF-8, "
-        f"{s['excluded_truncated']} cut last word",
+        f"{s['excluded_oov']} out-of-vocabulary ids, {s['excluded_truncated']} cut last word",
         f"- length (emitted tokens): mean {s['length']['mean']}, median {s['length']['median']}, p90 {s['length']['p90']}, max {s['length']['max']}",
         f"- **per-token non-canonical rate: {_pct(s['per_token_rate'])}** ({s['nc_events']} of {s['units']} units = canonical tokens in "
         f"{s['spans']} spans + {s['fragment_events_standalone']} standalone byte-fragment events; {s['nc_emitted']} emitted tokens in spans, "
