@@ -1,0 +1,44 @@
+# Downstream divergence at non-canonical spans (teacher-forced forward passes,
+# emitted ids vs canonical re-tokenization), one cell after another on one GPU.
+#
+#   sky launch -c nc-div skypilot/divergence.yaml -i 20 --down -y -d --env HF_TOKEN \
+#       --env JOBS="allenai/Olmo-3-7B-Think-DPO:main:think-dpo allenai/Olmo-3-7B-Think:main:think-main"
+#
+# JOBS entries are model:revision:run_name; records and spans are fetched from
+# the HF dataset, results uploaded under divergence/<run_name>.
+
+resources:
+  infra: runpod
+  accelerators: {A100-80GB:1, H100-SXM:1, H100-NVL:1}
+  disk_size: 100
+
+workdir: .
+
+envs:
+  HF_TOKEN: null
+  HF_HUB_ENABLE_HF_TRANSFER: "0"
+  JOBS: ""
+  ARM: untruncated
+  PROMPT_SET: dapo_sample500
+  MAX_SPANS: "400"
+  HF_DATASET: brendanlong/noncanonical-post-training
+
+setup: |
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  uv sync --frozen --extra gpu
+  uv run --no-sync python -m noncanon.gpu_check
+
+run: |
+  export PATH="$HOME/.local/bin:$PATH"
+  export UV_NO_SYNC=1
+  [ -n "$JOBS" ] || { echo "set JOBS"; exit 1; }
+  for job in $JOBS; do
+    IFS=: read -r MODEL REVISION RUN_NAME <<< "$job"
+    [ -n "$MODEL" ] && [ -n "$REVISION" ] && [ -n "$RUN_NAME" ] || { echo ">>> bad JOBS entry '$job'"; exit 1; }
+    echo ">>> $MODEL @ $REVISION -> $RUN_NAME"
+    uv run python -m noncanon.divergence fetch "$RUN_NAME" --prompt-set "$PROMPT_SET" --repo "$HF_DATASET" || exit 1
+    uv run python -m noncanon.divergence run "out/$RUN_NAME/$PROMPT_SET" --model "$MODEL" --revision "$REVISION" --arm "$ARM" \
+        --max-spans "$MAX_SPANS" --out-dir "out/divergence/$RUN_NAME" || exit 1
+    uv run python -m noncanon.upload "out/divergence/$RUN_NAME" "divergence/$RUN_NAME" --repo "$HF_DATASET" || { echo ">>> upload failed for $RUN_NAME"; exit 1; }
+  done
