@@ -444,6 +444,57 @@ lower temperature or truncation.
     reversal, Think RL final above DPO under the recommended settings,
     is possible.
 
+## Added after the Think-SFT and step-300 cells (Brendan, 2026-09-03)
+
+The ladder results are strange: SFT and RL final are level and 6× below
+DPO, while within the Zero run the rate rises 3× from step 300 to step
+2000. Two readings, both recorded:
+
+- **Noise.** The non-canonical rate may fluctuate semi-randomly between
+  about 0.01% and 0.02% over training, in which case these cells are
+  pulling signal out of random fluctuation. Against this: the same
+  orderings hold on two different prompt sets (DAPO and AIME), which
+  points to something really in the model.
+- **Two processes.** Everything seen so far is consistent with (a)
+  something about DPO making the long tail of the model less confident,
+  which produces the bare-space-then-tail-token spans, and (b) a separate
+  process, the one originally predicted, by which the model *confidently*
+  predicts non-canonical tokens more often the longer on-policy RL runs.
+  Testable on existing data: the argmax-start span rate should rise with
+  on-policy RL (Zero step 300 → 2000; Think SFT → RL final), while the
+  tail-start span rate should track DPO.
+
+Added after the recommended-settings cells (Brendan, 2026-09-04): the
+cross-model validation (Instruct, Tulu) is the check on whether this is
+training noise, but the points so far look real, with *something* weird
+about DPO specifically. A candidate explanation for Zero rising under RL
+while Think RL falls: the model's confidence at the start of RL. Zero
+starts high-entropy, so RL amplifies non-canonical tokens when they
+happen to be useful and converges to low entropy over a mix of canonical
+and non-canonical habits; Think starts from a low-entropy DPO checkpoint,
+so RL makes it more confident in whatever it already does and it rarely
+samples non-canonical tokens in the first place, converging canonical.
+Not obviously distinguishable with the current data. An alternative is a
+recipe difference: an entropy bonus or other setting that makes the Zero
+run sample more widely than the Think RL stage.
+
+*Notes from Claude (from the OLMo 3 report, arXiv 2512.13961v2):* both the
+Think RL stage and RL-Zero use the same OlmoRL objective (GRPO with
+token-level loss, truncated importance sampling, clip-higher, no advantage
+std normalization, and **no KL loss**); the report never mentions an
+entropy bonus. Rollouts during RL are sampled at temperature 1.0 / top-p
+1.0 for both. RL-Zero 3.0 (the checkpoints used here) trained with a 12k
+completion length and masked truncated sequences; 3.1 raised it to 16k and
+stopped masking. The RL-Zero math prompt is the fixed instruction "Solve
+the following math problem step by step. The last line of your response
+should be the answer to the problem in form Answer: $Answer", which is
+what its chat template applies, so our DAPO cells used its training
+format. On the starting-entropy premise: the report itself observes that
+the DPO model "does display lower entropy" than SFT while having higher
+pass@K on AIME, which matches the measured top-10 entropies here (SFT
+0.615, DPO 0.338). Table 49 (per-run learning rate, batch, steps) is not
+text-extractable from the HTML; check the PDF if the exact dose matters.
+
 ## Follow-ups under consideration
 
 - **Downstream divergence at non-canonical spans** (added 2026-09-03).

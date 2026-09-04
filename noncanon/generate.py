@@ -30,14 +30,58 @@ from vllm import LLM, SamplingParams, TokensPrompt
 
 from noncanon.records import write_records
 
-# "recommended" is the decoding setting the OLMo 3 report evaluated with and
-# every OLMo-3 checkpoint ships in generation_config.json
-# (https://arxiv.org/html/2512.13961v2#S4.SS1.SSS1). "untruncated" is the
-# full distribution.
+# "untruncated" is the full distribution. "recommended" is whatever the
+# checkpoint ships in generation_config.json (OLMo-3: temperature 0.6 /
+# top_p 0.95, the setting the OLMo 3 report evaluated with,
+# https://arxiv.org/html/2512.13961v2#S4.SS1.SSS1; Tulu-3: 0.6 / 0.9), so it
+# is resolved per model at run time and recorded in the meta file.
 ARMS = {
-    "recommended": {"temperature": 0.6, "top_p": 0.95},
+    "recommended": None,
     "untruncated": {"temperature": 1.0, "top_p": 1.0},
 }
+
+
+def resolve_arms(names: list[str], gen_cfg: GenerationConfig) -> dict[str, dict]:
+    arms = {}
+    for name in names:
+        if name == "recommended":
+            # GenerationConfig fills absent fields with class defaults (1.0), so
+            # look at what the checkpoint actually wrote.
+            explicit = gen_cfg.to_diff_dict()
+            assert "temperature" in explicit and "top_p" in explicit, (
+                "checkpoint's generation_config.json does not set temperature and top_p; no recommended setting to use"
+            )
+            arms[name] = {"temperature": float(explicit["temperature"]), "top_p": float(explicit["top_p"])}
+        else:
+            arms[name] = dict(ARMS[name])
+    return arms
+
+
+def stop_token_ids(tok, gen_cfg: GenerationConfig) -> list[int]:
+    """Stop ids: generation_config EOS, tokenizer EOS, the chat template's
+    turn-end token, and <|im_end|> where the vocabulary has it.
+
+    Think/Instruct list <|im_end|> and <|endoftext|> in generation_config.
+    RL-Zero ships no eos and its template has no special tokens at all, so
+    only the explicit <|im_end|> fallback covers its turn end. Tulu's
+    template uses plain-text role markers and ends turns with the EOS
+    <|end_of_text|>.
+    """
+    ids = set()
+    eos = gen_cfg.eos_token_id
+    ids.update(eos if isinstance(eos, (list, tuple)) else [eos])
+    ids.add(tok.eos_token_id)
+    rendered = tok.apply_chat_template(
+        [{"role": "user", "content": "x"}, {"role": "assistant", "content": "y"}], tokenize=True
+    )
+    specials = set(tok.all_special_ids) | set(tok.added_tokens_decoder)
+    turn_end = [t for t in rendered if t in specials]
+    if turn_end:
+        ids.add(turn_end[-1])
+    im_end = tok.convert_tokens_to_ids("<|im_end|>")
+    if isinstance(im_end, int) and im_end != tok.unk_token_id and im_end in specials:
+        ids.add(im_end)
+    return sorted(t for t in ids if isinstance(t, int))
 
 
 
@@ -66,19 +110,15 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    arms = [a.strip() for a in args.arms.split(",") if a.strip()]
-    unknown = set(arms) - set(ARMS)
+    arm_names = [a.strip() for a in args.arms.split(",") if a.strip()]
+    unknown = set(arm_names) - set(ARMS)
     assert not unknown, f"unknown arms {unknown}; known: {list(ARMS)}"
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     tok = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
-    # Stop tokens: the checkpoint's generation_config.json if it names any
-    # (Think/Instruct list <|im_end|> and <|endoftext|>); otherwise (RL-Zero
-    # ships none) the tokenizer's EOS plus the chat template's turn end.
-    eos = GenerationConfig.from_pretrained(args.model, revision=args.revision).eos_token_id
-    if eos is None:
-        eos = [tok.eos_token_id, tok.convert_tokens_to_ids("<|im_end|>")]
-    eos_ids = sorted({t for t in (eos if isinstance(eos, (list, tuple)) else [eos]) if isinstance(t, int)})
+    gen_cfg = GenerationConfig.from_pretrained(args.model, revision=args.revision)
+    arms = resolve_arms(arm_names, gen_cfg)
+    eos_ids = stop_token_ids(tok, gen_cfg)
     assert eos_ids, "no stop token ids found"
 
     prompts = load_prompts(args.prompts, args.prompt_field, args.limit)
@@ -104,8 +144,8 @@ def main() -> None:
         disable_log_stats=False,  # periodic throughput / running / KV-usage lines in the log
     )
 
-    for arm in arms:
-        sampling = {**ARMS[arm], "top_k": -1, "min_p": 0.0, "repetition_penalty": 1.0, "max_tokens": args.max_tokens, "n": args.n}
+    for arm, setting in arms.items():
+        sampling = {**setting, "top_k": -1, "min_p": 0.0, "repetition_penalty": 1.0, "max_tokens": args.max_tokens, "n": args.n}
         params = SamplingParams(logprobs=args.logprobs, stop_token_ids=eos_ids, skip_special_tokens=False, **sampling)
         t0 = time.time()
         outputs = llm.generate([TokensPrompt(prompt_token_ids=ids) for ids in prompt_ids], params, use_tqdm=True)
