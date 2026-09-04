@@ -71,3 +71,16 @@ def test_build_pair_rejects_a_window_cut_inside_a_character(an):
     ids = prefix + light + house + enc(an, " and more text follows here") + [bad]
     assert build_pair(an, [], ids, len(prefix), 2, before=100, after=100) is None
     assert build_pair(an, [], ids[:-1], len(prefix), 2, before=100, after=100) is not None
+
+
+def test_contagion_pair_ends_where_the_target_token_starts(an):
+    from noncanon.divergence import build_contagion_pair
+
+    prefix, light, house = enc(an, "The word is"), enc(an, " light"), enc(an, "house")
+    middle = enc(an, " and then a while later the next word is")
+    ids = prefix + light + house + middle + enc(an, " sunflower")
+    p2 = len(prefix) + 2 + len(middle)
+    pair = build_contagion_pair(an, [9], ids, len(prefix), p2, before=100)
+    assert pair is not None and pair["a"] == [9] + ids[:p2] and pair["b"] != pair["a"]
+    assert b"".join(an.token_bytes(pair["a"][1:])) == b"".join(an.token_bytes(pair["b"][1:]))  # same text, so the next token starts at the same byte
+    assert build_contagion_pair(an, [], enc(an, "Nothing non-canonical anywhere here at all"), 2, 6, before=100) is None

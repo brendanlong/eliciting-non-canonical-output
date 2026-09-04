@@ -20,6 +20,13 @@ Control: in rollouts of the same cell with no event, a random alphabetic word
 token at a matched depth is split into two in-vocabulary pieces (an
 arbitrary non-canonical tokenization of the same text) and measured the same
 way. Rows are written to ``out/divergence/<run>/<arm>.parquet``.
+
+``contagion``: for consecutive spans in a rollout, the log-probability of
+the second span's first emitted token under the context with the first
+span as emitted (A) versus canonically re-tokenized (B); Δ > 0 means the
+first span's tokenization makes the second more likely. Control: the
+ordinary emitted token at a matched distance after the span in
+single-span rollouts, which carries the same one-token position shift.
 """
 
 from __future__ import annotations
@@ -307,6 +314,133 @@ def summarize_lens(dirs: list[str], arm: str, max_distance: int = 16) -> None:
             print(f"| {label} | {kind} | " + "; ".join(f"L{l}: {k:.3f} / {x:.4f}" for l, k, x in zip(layers, kl, cos)) + f" | {c['kl_ab'][m].mean():.3f} |")
 
 
+# --- contagion: is the second span more likely because the first was emitted non-canonically? -------
+CONTAGION_SCHEMA = pa.schema([
+    ("kind", pa.string()), ("prompt_id", pa.string()), ("sample", pa.int32()), ("first_pos", pa.int32()), ("target_pos", pa.int32()),
+    ("gap", pa.int32()), ("same_text", pa.bool_()), ("target_id", pa.int32()), ("canonical_id", pa.int32()),
+    ("logp_a", pa.float32()), ("logp_b", pa.float32()), ("logp_a_canonical", pa.float32()), ("logp_b_canonical", pa.float32()),
+    ("rank_a", pa.int32()), ("rank_b", pa.int32()),
+])
+
+
+def build_contagion_pair(an: Analyzer, prompt_ids: list[int], ids: list[int], p1: int, p2: int, before: int) -> dict | None:
+    """A = emitted ids up to (not including) the target position p2; B = canonical re-tokenization of the same text.
+
+    Both end at the byte where the target token starts, so the next-token
+    distribution of each is the model's prediction for that token."""
+    start = canonical_start(an, ids, max(0, p1 - before), p1)
+    if start is None:
+        return None
+    window = ids[start:p2]
+    prefix = ids[start:p1]
+    canon = an.tok.encode(an.tok.decode(window), add_special_tokens=False)
+    bytes_a, bytes_b = an.token_bytes(window), an.token_bytes(canon)
+    if canon[: len(prefix)] != prefix or canon == window or b"".join(bytes_a) != b"".join(bytes_b):
+        return None
+    return {"a": prompt_ids + window, "b": prompt_ids + canon, "first_pos": p1, "target_pos": p2}
+
+
+def measure_contagion(m: Model, pair: dict, target_id: int, canonical_id: int) -> dict:
+    torch = m.torch
+    out = {}
+    for key in ("a", "b"):
+        ids = pair[key]
+        with torch.no_grad():
+            logits = m.model(torch.tensor([ids], device=m.device)).logits[0, -1].float()
+        logp = torch.log_softmax(logits, -1)
+        out[f"logp_{key}"] = float(logp[target_id])
+        out[f"logp_{key}_canonical"] = float(logp[canonical_id])
+        out[f"rank_{key}"] = int((logp > logp[target_id]).sum().item()) + 1
+    return out
+
+
+def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: Path, before: int, max_gap: int, max_pairs: int, seed: int) -> None:
+    an = Analyzer(model_name, revision)
+    records = {(r["prompt_id"], r["sample"]): r for r in iter_records(run_dir / f"{arm}.parquet")}
+    spans = defaultdict(list)
+    for line in (run_dir / "metrics" / "examples.jsonl").open():
+        e = json.loads(line)
+        if e["file"].startswith(arm):
+            spans[(e["prompt_id"], e["sample"])].append(e)
+    rng = random.Random(seed)
+    pairs, singles, skipped = [], [], Counter()
+    for key, es in spans.items():
+        es.sort(key=lambda e: e["pos"])
+        if len(es) == 1 and es[0]["canonical"] is not None:
+            singles.append((key, es[0]))
+        for e1, e2 in zip(es, es[1:]):  # consecutive events: nothing non-canonical between them
+            if e1["canonical"] is None or e2["canonical"] is None:
+                skipped["fragment"] += 1
+                continue
+            gap = e2["pos"] - (e1["pos"] + len(e1["emitted"]))
+            if gap < 1 or gap > max_gap:
+                skipped["gap out of range"] += 1
+                continue
+            pairs.append((key, e1, e2))
+    rng.shuffle(pairs)
+    pairs = pairs[:max_pairs]
+    m = Model(model_name, revision)
+    rows = []
+    for key, e1, e2 in pairs:
+        rec = records[key]
+        ids = list(rec["token_ids"])
+        pair = build_contagion_pair(an, list(rec["prompt_token_ids"]), ids, e1["pos"], e2["pos"], before)
+        if pair is None:
+            skipped["prefix not canonical"] += 1
+            continue
+        target = ids[e2["pos"]]
+        canonical = an.tok.encode("".join(e2["canonical"][:1]), add_special_tokens=False)
+        canonical_id = canonical[0] if len(canonical) == 1 else target
+        r = measure_contagion(m, pair, target, canonical_id)
+        rows.append({"kind": "pair", "prompt_id": key[0], "sample": int(key[1]), "first_pos": e1["pos"], "target_pos": e2["pos"], "gap": e2["pos"] - (e1["pos"] + len(e1["emitted"])),
+                     "same_text": "".join(e1["emitted"]) == "".join(e2["emitted"]), "target_id": target, "canonical_id": canonical_id, **r})
+    gaps = [r["gap"] for r in rows] or [64]
+    n_controls, tries = 0, 0
+    while singles and n_controls < len(rows) and tries < 20 * len(rows):
+        tries += 1
+        key, e1 = rng.choice(singles)
+        rec = records[key]
+        ids = list(rec["token_ids"])
+        p2 = e1["pos"] + len(e1["emitted"]) + rng.choice(gaps)
+        if p2 >= len(ids) or ids[p2] in an.special:
+            continue
+        pair = build_contagion_pair(an, list(rec["prompt_token_ids"]), ids, e1["pos"], p2, before)
+        if pair is None:
+            continue
+        r = measure_contagion(m, pair, ids[p2], ids[p2])
+        rows.append({"kind": "control", "prompt_id": key[0], "sample": int(key[1]), "first_pos": e1["pos"], "target_pos": p2, "gap": p2 - (e1["pos"] + len(e1["emitted"])),
+                     "same_text": False, "target_id": ids[p2], "canonical_id": ids[p2], **r})
+        n_controls += 1
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist(rows, schema=CONTAGION_SCHEMA), out_dir / f"{arm}.contagion.parquet")
+    meta = {"model": model_name, "revision": revision, "run_dir": str(run_dir), "arm": arm, "before": before, "max_gap": max_gap, "seed": seed,
+            "candidate_pairs": len(pairs), "measured_pairs": sum(r["kind"] == "pair" for r in rows), "controls": n_controls, "single_span_rollouts": len(singles), "skipped": dict(skipped)}
+    (out_dir / f"{arm}.contagion.meta.json").write_text(json.dumps(meta, indent=2))
+    print(json.dumps(meta, indent=2))
+
+
+def summarize_contagion(dirs: list[str], arm: str) -> None:
+    """Δ = log p(target | emitted context) − log p(target | re-tokenized context); positive favours the non-canonical continuation."""
+    from scipy.stats import wilcoxon
+
+    print("| cell | kind | pairs | median gap | mean Δ (nats) | median Δ | Δ > 0 | Wilcoxon p | mean Δ for the canonical alternative | rank of target: median A / B |")
+    print("|---|---|--:|--:|--:|--:|--:|--:|--:|--:|")
+    for spec in dirs:
+        label, _, d = spec.rpartition("=")
+        d = Path(d); label = label or d.name
+        t = pq.read_table(d / f"{arm}.contagion.parquet")
+        cols = {c: t.column(c).to_numpy(zero_copy_only=False) for c in t.column_names}
+        delta = cols["logp_a"] - cols["logp_b"]
+        delta_c = cols["logp_a_canonical"] - cols["logp_b_canonical"]
+        groups = [("pairs, same text", (cols["kind"] == "pair") & cols["same_text"]), ("pairs, different text", (cols["kind"] == "pair") & ~cols["same_text"]), ("control (ordinary token at a matched distance)", cols["kind"] == "control")]
+        for name, mask in groups:
+            if mask.sum() == 0:
+                continue
+            dm = delta[mask]
+            p = wilcoxon(dm).pvalue if len(dm) >= 6 and np.any(dm != 0) else float("nan")
+            print(f"| {label} | {name} | {mask.sum()} | {int(np.median(cols['gap'][mask]))} | {dm.mean():+.3f} | {np.median(dm):+.3f} | {100 * (dm > 0).mean():.0f}% | {p:.2g} | {delta_c[mask].mean():+.3f} | {int(np.median(cols['rank_a'][mask]))} / {int(np.median(cols['rank_b'][mask]))} |")
+
+
 def fetch(run: str, prompt_set: str, repo: str) -> None:
     from huggingface_hub import snapshot_download
 
@@ -321,15 +455,22 @@ def main() -> None:
     r.add_argument("run_dir", type=Path); r.add_argument("--model", required=True); r.add_argument("--revision", default="main"); r.add_argument("--arm", default="untruncated")
     r.add_argument("--out-dir", type=Path, default=None); r.add_argument("--before", type=int, default=4096); r.add_argument("--after", type=int, default=512)
     r.add_argument("--max-spans", type=int, default=400); r.add_argument("--per-rollout", type=int, default=3); r.add_argument("--seed", type=int, default=0)
-    s = sub.add_parser("summarize"); s.add_argument("dirs", nargs="+", help="[label=]out/divergence/<run>"); s.add_argument("--arm", default="untruncated"); s.add_argument("--lens", action="store_true")
+    s = sub.add_parser("summarize"); s.add_argument("dirs", nargs="+", help="[label=]out/divergence/<run>"); s.add_argument("--arm", default="untruncated"); s.add_argument("--lens", action="store_true"); s.add_argument("--contagion", action="store_true")
+    c = sub.add_parser("contagion", help="second-span probability under the emitted vs re-tokenized first span")
+    c.add_argument("run_dir", type=Path); c.add_argument("--model", required=True); c.add_argument("--revision", default="main"); c.add_argument("--arm", default="untruncated")
+    c.add_argument("--out-dir", type=Path, default=None); c.add_argument("--before", type=int, default=2048); c.add_argument("--max-gap", type=int, default=4096)
+    c.add_argument("--max-pairs", type=int, default=400); c.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if args.cmd == "fetch":
         fetch(args.run, args.prompt_set, args.repo)
     elif args.cmd == "run":
         out_dir = args.out_dir or Path("out/divergence") / args.run_dir.parent.name
         run_cell(args.run_dir, args.arm, args.model, args.revision, out_dir, args.before, args.after, args.max_spans, args.per_rollout, args.seed)
+    elif args.cmd == "contagion":
+        out_dir = args.out_dir or Path("out/divergence") / args.run_dir.parent.name
+        run_contagion(args.run_dir, args.arm, args.model, args.revision, out_dir, args.before, args.max_gap, args.max_pairs, args.seed)
     else:
-        (summarize_lens if args.lens else summarize)(args.dirs, args.arm)
+        (summarize_contagion if args.contagion else summarize_lens if args.lens else summarize)(args.dirs, args.arm)
 
 
 if __name__ == "__main__":

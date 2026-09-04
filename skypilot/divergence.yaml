@@ -21,6 +21,7 @@ envs:
   ARM: untruncated
   PROMPT_SET: dapo_sample500
   MAX_SPANS: "400"
+  MODE: run          # run = divergence after each span; contagion = second-span probability under emitted vs re-tokenized first span
   HF_DATASET: brendanlong/noncanonical-post-training
 
 setup: |
@@ -38,8 +39,13 @@ run: |
     [ -n "$MODEL" ] && [ -n "$REVISION" ] && [ -n "$RUN_NAME" ] || { echo ">>> bad JOBS entry '$job'"; exit 1; }
     echo ">>> $MODEL @ $REVISION -> $RUN_NAME"
     uv run python -m noncanon.divergence fetch "$RUN_NAME" --prompt-set "$PROMPT_SET" --repo "$HF_DATASET" || exit 1
-    uv run python -m noncanon.divergence run "out/$RUN_NAME/$PROMPT_SET" --model "$MODEL" --revision "$REVISION" --arm "$ARM" \
-        --max-spans "$MAX_SPANS" --out-dir "out/divergence/$RUN_NAME" || exit 1
+    if [ "$MODE" = contagion ]; then
+      uv run python -m noncanon.divergence contagion "out/$RUN_NAME/$PROMPT_SET" --model "$MODEL" --revision "$REVISION" --arm "$ARM" \
+          --max-pairs "$MAX_SPANS" --out-dir "out/divergence/$RUN_NAME" || exit 1
+    else
+      uv run python -m noncanon.divergence run "out/$RUN_NAME/$PROMPT_SET" --model "$MODEL" --revision "$REVISION" --arm "$ARM" \
+          --max-spans "$MAX_SPANS" --out-dir "out/divergence/$RUN_NAME" || exit 1
+    fi
     uv run python -m noncanon.upload "out/divergence/$RUN_NAME" "divergence/$RUN_NAME" --repo "$HF_DATASET" || { echo ">>> upload failed for $RUN_NAME"; exit 1; }
     # Each 7B checkpoint is ~15 GB; a queue of them fills the disk. Drop the weights once the cell is uploaded.
     rm -rf ~/.cache/huggingface/hub/models--* /workspace/.cache/huggingface/hub/models--* "out/$RUN_NAME"  # RunPod images cache under /workspace
