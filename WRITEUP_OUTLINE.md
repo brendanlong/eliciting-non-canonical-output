@@ -17,11 +17,13 @@ result Neel is most likely to learn something from:
   SFT ≈ DPO < RL, because only on-policy RL trains on emitted token IDs)
   **failed in both OLMo-3 tracks.** DPO, which trains on canonical text,
   raised the flagged-rollout fraction 4.7× (Think) and 6.2× (Instruct), and
-  the on-policy RL stage brought it back down to the SFT level.
+  the on-policy RL stage brought it back down to the SFT level (Think,
+  p = 0.48) or slightly above it (Instruct, 6.2% vs 3.4%, p = 0.053).
 - RL from the base model with no SFT (RL-Zero-Math) went the other way,
   rising 4× between step 300 and step 2000.
-- Tulu-3 (Llama-3.1 base, same recipe, different tokenizer) showed no stage
-  effect at all.
+- Tulu-3 (Llama-3.1 base, the recipe OLMo-3 Instruct descends from, but a
+  different tokenizer and a different DPO loss and data) showed no stage
+  effect on whole rollouts.
 
 That is a concrete, surprising, pre-registered-and-falsified result with a
 same-base same-tokenizer control. It should be the first takeaway and the
@@ -32,7 +34,8 @@ Second thing missing from the draft: the "where do spans start" analysis
 (`noncanon.tail`) is the closest thing the project has to a mechanistic
 finding and is the one that answers the practical question a reader will
 ask first ("isn't this just tail sampling that top-p removes?"). About three
-quarters of spans begin with the model's argmax token in every checkpoint,
+quarters of spans begin with the model's argmax token in the three OLMo-3
+cells where this was measured (Think-DPO, Think RL, RL-Zero-Math),
 which is why the recommended settings cut the rate 3.6–8.5× but do not
 eliminate it (Think-DPO still flags 15.2% of rollouts at T=0.6 / top-p 0.95).
 
@@ -82,22 +85,27 @@ at least one non-canonical event, 500 rollouts per cell):
   Pre-registered prediction was SFT ≈ DPO < RL.
 - RL straight from the base model rises with training: RL-Zero-Math
   14.6% at step 300 → 58.4% at step 2000 (more checkpoints pending).
-- Tulu-3 (Llama tokenizer) is flat across stages (2.8–5.2%, omnibus p = 0.16),
-  so the DPO spike may be an OLMo-3 tokenizer or recipe effect, not a
-  general one.
-- Most spans start at the model's argmax token (76–80% across checkpoints),
-  so this is not purely a sampling-tail artefact; recommended settings
-  reduce but do not remove it.
-- Length-controlled (first 1,024 tokens) and correct-only views give the
-  same stage ordering; AIME differs from DAPO only through rollout length.
+- Tulu-3 (Llama tokenizer) is flat across stages on whole rollouts
+  (2.8–5.2%, omnibus p = 0.16), so the DPO spike may be an OLMo-3 tokenizer
+  or recipe effect, not a general one. Its DPO is not the same recipe as
+  OLMo-3's, so this is a weak replication test.
+- Most spans start at the model's argmax token (76–80% in the three OLMo-3
+  cells measured; Tulu is lower and varies 14–62%), so this is not purely a
+  sampling-tail artefact; recommended settings reduce but do not remove it.
+- Restricting to correct rollouts leaves the stage ordering unchanged in
+  the OLMo-3 tracks; the first-1,024-token window separates DPO and Zero
+  from the rest early but has no power for the short Instruct-SFT and Tulu
+  cells. AIME is higher than DAPO overall and indistinguishable within the
+  first 1,024 tokens, consistent with (not proof of) a length effect.
 - Contagion / logit-lens result: pending.
 
 ### 2. Random examples
 
 Lift from `RESULTS.md` "Random examples" (sharpness section). Show
 context, emitted tokens, canonical tokens, rank and probability of the first
-emitted token. State the selection rule (random within argmax-start and
-tail-start strata per checkpoint). Include at least one DPO bare-space span
+emitted token. State the selection rule; RESULTS.md groups the examples by
+argmax-start vs tail-start per checkpoint but does not record how they were
+drawn, so check `noncanon.tail` and say what it does. Include at least one DPO bare-space span
 because it is the shape behind the DPO spike. Neel explicitly wants these
 "randomly selected, not cherry-picked".
 
@@ -154,10 +162,12 @@ each. AIME 2024 + 2025 (60 problems, 8 samples each, 480 rollouts) as a
 harder, decontaminated set. Integer answers, so correctness is a
 deterministic check on the boxed answer. Caveat worth stating: the held-out
 DAPO remainder is what AI2 did not select for RL and skews easy (Think
-accuracy 94–97%).
+ladder accuracy on finished, parsed rollouts 97.5–98.8%).
 
 **Sampling.** vLLM 0.11, bf16 weights and KV cache, no speculative
-decoding, 32k-token cap, default chat template. Two arms: temperature 1 /
+decoding, 32k-token cap, default chat template (for RL-Zero-Math the
+template injects a fixed "solve step by step ... Answer:" instruction, so
+that cell's prompt is not the bare problem). Two arms: temperature 1 /
 top-p 1 (the untruncated distribution, what the model learned) and each
 checkpoint's `generation_config.json` (0.6 / 0.95 for OLMo-3, 0.6 / 0.9 for
 Tulu; RL-Zero-Math ships none). Emitted token IDs and top-10 logprobs
@@ -174,8 +184,9 @@ rollouts and the per-token test overstates the evidence; still reported.
 Say this in the writeup: Neel likes seeing an analysis decision made for a
 stated reason.
 
-**Cost.** B200 at $6.79/h (RunPod via SkyPilot); fill in the total from
-the RunPod bill, not from memory.
+**Cost.** B200 at $6.79/h for the full runs, A100-80GB at $1.39/h for the
+pilot (RunPod via SkyPilot); fill in the total from the RunPod bill, not
+from memory.
 
 ### 5.1 Training stage (headline)
 
@@ -193,15 +204,17 @@ Text facts:
 - RL-Zero-Math: 14.6 → 58.4% (p = 8e-49); 44.3% within the first 1,024
   tokens, far above any other cell.
 - Tulu-3: 5.2 / 3.0 / 2.8 / 3.4%; no pair significant; omnibus p = 0.16.
-  The one significant Tulu comparison (within 1,024 tokens, 13.2% for SFT)
-  is driven by SFT rollouts that degenerate into word salad.
+  The one significant Tulu omnibus (within 1,024 tokens, p = 1e-06) is
+  driven by SFT rollouts that degenerate into word salad (13.2% vs ≤ 3.6%);
+  the pairwise window comparisons at p = 0.04–0.05 are multiple-comparison
+  noise per RESULTS.md.
 - Correct-only columns give the same orderings for the OLMo-3 tracks.
 - State plainly that predictions 3 and 4 were wrong.
 
 ### 5.2 RL-Zero over checkpoints (pending)
 
 Figure 2: % rollouts flagged vs RL step, with the two existing points and
-the four pending ones. If the curve is monotone, say so; if it is not,
+whichever of the step_100–step_1900 branches the pending runs cover. If the curve is monotone, say so; if it is not,
 say that too.
 
 ### 5.3 What survives realistic sampling
@@ -217,19 +230,21 @@ Text facts:
   Think-DPO 55.0 → 15.2%, Think RL 10.2 → 2.0%, Instruct-DPO 21.0 → 5.0%,
   Instruct RL 6.2 → 1.0%. Stage ordering unchanged.
 - Three quarters of spans start at the argmax token (Think RL 79.6%, DPO
-  76.4%, Zero 78.6%). At the recommended settings nothing beyond the top-10
-  is ever sampled, and the remaining spans (Think RL 17, DPO 98) are all
-  near-argmax starts.
+  76.4%, Zero 78.6%). At the recommended settings the beyond-top-10 sample
+  share rounds to 0.0%, and the remaining spans (Think RL 17, of which 14
+  argmax-start; DPO 98, 92% argmax-start) are almost all argmax starts.
 - DPO's excess is a specific shape: 231 of its 403 spans begin with a bare
   space token emitted at p ≈ 1, followed by a token at rank >10 in 81% of
   cases (in this tokenizer a standalone space is canonical only before a
   digit). Excluding those, DPO's argmax-start rate is 25.9 per million
   vs SFT 10.9 and RL 21.4. This is the fact that most needs a hypothesis
   in section 6.
-- Sharpness does not explain it: RL final has the highest top-10 entropy
-  of the three Think-track checkpoints (0.379) and the lowest rate; DPO the
-  lowest entropy (0.338) and the highest rate. DPO's beyond-top-10 samples
-  are non-canonical 11× more often than SFT's.
+- Sharpness does not explain it: Think-SFT is the least sharp checkpoint
+  by every measure (top-10 entropy 0.615, 1.2% of samples beyond the
+  top-10) and has the lowest tail-start span rate; DPO is the sharpest
+  (0.338, 0.5%) and its beyond-top-10 samples are non-canonical 11× more
+  often than SFT's. Among Think-DPO, Think RL and Zero, RL has the highest
+  entropy (0.379) and the lowest rate.
 - Think vs answer: Think RL 0.0035% inside `<think>` vs 0.0025% after,
   DPO 0.0196% vs 0.0079%. Prediction 5 (higher in CoT) holds weakly.
 
@@ -250,7 +265,7 @@ are not a length artefact.
 - Correct vs incorrect: the draft's "[or did I?]" is fair. What the tables
   support is that restricting to correct rollouts leaves the stage
   ordering unchanged (Think 9.2 → 54.2 → 9.3%). A direct correct-vs-
-  incorrect test is underpowered in the Think track (≤ 52 incorrect
+  incorrect test is underpowered in the Think track (6–12 incorrect
   rollouts per cell) and the per-token rates by outcome go both ways
   (Zero step 2000: 0.0219% correct vs 0.0332% incorrect). Recommend
   reporting it as "ordering robust to conditioning on correctness" rather
@@ -306,9 +321,10 @@ earlier project is ~19.8 h at the keyboard (band 14–24 h) from transcript
 timing; this project is 8 h so far. Say what carried over concretely (the
 round-trip metric definition, the finding that temperature and dtype
 matter, the tokenizer-class slices) versus what is new (all code, prompt
-sets, models). Neel's rules allow a reset when the earlier code and
-findings are "not particularly helpful" for the new direction; this is a
-partial case, and saying so is better than "I'm unsure if this counts".
+sets, models). The FAQ allows a timer reset only for a total change of
+direction where earlier code and findings are "not particularly helpful";
+this is a partial case, and saying so is better than "I'm unsure if this
+counts".
 Include the AI-use disclosure (agents ran the experiments; which numbers
 you verified by hand and how: Neel explicitly rewards "I read 30
 transcripts and confirmed ...").
@@ -317,7 +333,8 @@ transcripts and confirmed ...").
 
 Repo link (rename before submitting; fix the `PROJECT_PLAN.md` link to
 `EXPERIMENT_PLAN.md`), HF dataset id, one line on `check_results.py`
-verifying every table in `RESULTS.md` against the stored records.
+verifying the Summary and rollout-level tables in `RESULTS.md` against
+the stored records.
 
 ## Corrections to the current draft
 
