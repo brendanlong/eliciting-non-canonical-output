@@ -10,7 +10,7 @@
 resources:
   infra: runpod
   accelerators: {A100-80GB:1, H100-SXM:1, H100-NVL:1}
-  disk_size: 100
+  disk_size: 150
 
 workdir: .
 
@@ -41,4 +41,6 @@ run: |
     uv run python -m noncanon.divergence run "out/$RUN_NAME/$PROMPT_SET" --model "$MODEL" --revision "$REVISION" --arm "$ARM" \
         --max-spans "$MAX_SPANS" --out-dir "out/divergence/$RUN_NAME" || exit 1
     uv run python -m noncanon.upload "out/divergence/$RUN_NAME" "divergence/$RUN_NAME" --repo "$HF_DATASET" || { echo ">>> upload failed for $RUN_NAME"; exit 1; }
+    # Each 7B checkpoint is ~15 GB; five of them fill the 100 GB disk. Drop the weights once the cell is uploaded.
+    rm -rf ~/.cache/huggingface/hub/models--* "out/$RUN_NAME"
   done
