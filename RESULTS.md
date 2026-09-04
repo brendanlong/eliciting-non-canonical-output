@@ -260,6 +260,14 @@ per-rollout rate: DPO 0.0052%, Zero 0.0138%. Dropping Zero's two densest
 rollouts: Zero 0.0206%, difference 0.0046 pp, p = 0.011. (Token-level
 Poisson z ignoring clustering: 7.4.)
 
+Brendan's note (2026-09-03) on the two conventions: byte fragments and
+non-canonical-but-valid tokens are probably not the same thing (invalid
+UTF-8 reads as "the model isn't smart enough", while other non-canonical
+tokens are frequently reasonable); the headline rule's p = 0.057 is not
+ideal but more defensible. The AIME cells will add evidence, with the
+caveat that the same data must not be compared in different ways until
+something comes out significant.
+
 Prediction status for this cell: not yet, Think RL final at 500 prompts is
 still running; the pilot's 50-prompt Think number is on a different prompt
 sample and is listed for orientation only.
