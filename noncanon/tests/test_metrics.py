@@ -211,14 +211,18 @@ def test_summarize_denominators():
     assert set(s["by_length_quartile"]) == {"q1", "q2", "q3", "q4"}
 
 
-def test_fisher_exact_matches_known_tables():
-    from noncanon.compare import fisher_exact, wilson
+def test_rollout_tests_take_flagged_counts():
+    # Thin wrappers over scipy: the arguments are (flagged, eligible) per cell.
+    from noncanon.compare import MIN_ELIGIBLE, fisher_exact, flags, wilson
 
     assert abs(fisher_exact(3, 4, 1, 4) - 0.4857) < 1e-3  # [[3,1],[1,3]]: classic two-sided value
     assert abs(fisher_exact(1, 5, 9, 10) - 0.0170) < 1e-3  # [[1,4],[9,1]]: P(x=1) + P(x=0) = (50 + 1) / 3003
     assert fisher_exact(0, 500, 0, 500) == 1.0
     lo, hi = wilson(51, 500)
     assert 0.078 < lo < 0.080 and 0.130 < hi < 0.132  # 10.2% flagged: Wilson [7.9%, 13.1%]
+    rows = [{"nc_events": 1, "n_tokens": 300, "event_positions": [200]}, {"nc_events": 0, "n_tokens": 2000, "event_positions": []}, {"nc_events": 2, "n_tokens": 100, "event_positions": [5, 50]}]
+    assert flags(rows) == (2, 3) and flags(rows, 256) == (1, 2) and flags(rows, 1024) == (0, 1)
+    assert MIN_ELIGIBLE >= 2
 
 
 def test_window_flag_counts_a_standalone_fragment(an):

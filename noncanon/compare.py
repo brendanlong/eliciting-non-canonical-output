@@ -9,9 +9,11 @@ pair of run directories (each holding ``metrics/analysis.jsonl``), in order:
 
 1. Fraction of rollouts with at least one non-canonical event, with a
    Wilson 95% interval, and Fisher's exact test (two-sided) on the 2×2
-   table of flagged rollouts.
+   table of flagged rollouts (both from scipy.stats).
 2. The same flag restricted to the first L tokens, over rollouts that
-   reached L tokens (``SEQ_LENGTHS``), which controls for length.
+   reached L tokens (``SEQ_LENGTHS``), which conditions on length; a
+   window with fewer than ``MIN_ELIGIBLE`` such rollouts in either cell
+   is reported as n/a.
 3. The pooled per-token rate with a rollout-bootstrap 95% CI, a per-token
    z on pooled counts (conditional-binomial form; ignores clustering) and a
    per-rollout permutation test on the difference of pooled rates; under
@@ -29,10 +31,13 @@ from __future__ import annotations
 
 import argparse
 import json
-from math import erfc, exp, lgamma, sqrt
+from math import erfc, sqrt
 from pathlib import Path
 
 import numpy as np
+from scipy.stats import binomtest, fisher_exact as _fisher
+
+MIN_ELIGIBLE = 10  # a window with fewer eligible rollouts in either cell is reported as n/a, not tested
 
 from noncanon.metrics import SEQ_LENGTHS, outcome
 
@@ -56,38 +61,39 @@ def load(run_dir: Path, arm: str | None = None, outcome_filter: str = "all") -> 
 
 
 # --- rollout level -----------------------------------------------------------------
-def wilson(k: int, n: int, z: float = 1.959964) -> tuple[float, float]:
+def wilson(k: int, n: int) -> tuple[float, float]:
     if n == 0:
         return float("nan"), float("nan")
-    p, d = k / n, 1 + z * z / n
-    centre, half = (p + z * z / (2 * n)) / d, z * sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
-    return centre - half, centre + half
+    ci = binomtest(k, n).proportion_ci(method="wilson")
+    return float(ci.low), float(ci.high)
 
 
 def fisher_exact(k1: int, n1: int, k2: int, n2: int) -> float:
-    """Two-sided Fisher exact p for flagged counts k1/n1 vs k2/n2 (sum of tables no more probable than the observed)."""
-    k, n = k1 + k2, n1 + n2
-
-    def logp(x: int) -> float:  # hypergeometric log-pmf of x flagged in cell 1
-        return lgamma(n1 + 1) - lgamma(x + 1) - lgamma(n1 - x + 1) + lgamma(n2 + 1) - lgamma(k - x + 1) - lgamma(n2 - k + x + 1) - (lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1))
-
-    lo, hi = max(0, k - n2), min(k, n1)
-    observed = logp(k1)
-    return min(1.0, sum(exp(logp(x)) for x in range(lo, hi + 1) if logp(x) <= observed + 1e-9))
+    """Two-sided Fisher exact p for flagged counts k1/n1 vs k2/n2."""
+    return float(_fisher([[k1, n1 - k1], [k2, n2 - k2]]).pvalue)
 
 
 def flags(rows: list[dict], L: int | None = None) -> tuple[int, int]:
-    """(flagged, eligible) rollouts: any event, or an event within the first L tokens among rollouts that reached L."""
+    """(flagged, eligible) rollouts: any event, or an event within the first L tokens among rollouts that reached L.
+
+    Uses ``event_positions`` (ordinal of every event start, standalone
+    fragments included), so metrics written before that field existed fail
+    loudly instead of silently giving the older, fragment-free flags.
+    """
     if L is None:
         return sum(r["nc_events"] > 0 for r in rows), len(rows)
     eligible = [r for r in rows if r["n_tokens"] >= L]
-    return sum(r["seq_flags"][str(L)] for r in eligible), len(eligible)
+    return sum(bool(r["event_positions"]) and r["event_positions"][0] < L for r in eligible), len(eligible)
+
+
+def pct(k: int, n: int) -> str:
+    return f"{100 * k / n:.2f}%" if n else "n/a"
 
 
 def rollout_line(name: str, rows: list[dict], L: int | None = None) -> str:
     k, n = flags(rows, L)
     lo, hi = wilson(k, n)
-    return f"  {name:40s} {k:4d}/{n:<4d} = {100 * k / n if n else float('nan'):7.2f}%  Wilson 95% [{100 * lo:.2f}, {100 * hi:.2f}]"
+    return f"  {name:40s} {k:4d}/{n:<4d} = {pct(k, n):>8s}  Wilson 95% [{100 * lo:.2f}, {100 * hi:.2f}]"
 
 
 # --- token level (secondary) ---------------------------------------------------
@@ -140,9 +146,10 @@ def print_table(runs: list[Path], arm: str | None, outcome_filter: str) -> None:
         cells = []
         for L in SEQ_LENGTHS:
             kL, nL = flags(rows, L)
-            cells.append(f"{kL}/{nL} = {100 * kL / nL:.1f}%" if nL else "—")
+            cells.append(f"{kL}/{nL} = {100 * kL / nL:.1f}%" if nL >= MIN_ELIGIBLE else (f"{kL}/{nL} (too few)" if nL else "—"))
         rate = sum(r["nc_events"] for r in rows) / max(1, sum(r["n_units"] for r in rows))
-        print(f"| {run} | {n} | {k} ({100 * k / n:.1f}%) | {100 * lo:.1f}–{100 * hi:.1f}% | " + " | ".join(cells) + f" | {100 * rate:.4f}% |")
+        frac = f"{k} ({100 * k / n:.1f}%)" if n else "0 (n/a)"
+        print(f"| {run} | {n} | {frac} | {100 * lo:.1f}–{100 * hi:.1f}% | " + " | ".join(cells) + f" | {100 * rate:.4f}% |")
 
 
 def main() -> None:
@@ -163,11 +170,17 @@ def main() -> None:
     print(rollout_line(str(a), ra))
     print(rollout_line(str(b), rb))
     (k1, n1), (k2, n2) = flags(ra), flags(rb)
+    if not (n1 and n2):
+        print("  one cell has no rollouts in this outcome bucket; nothing to test")
+        return
     print(f"  b - a = {100 * (k2 / n2 - k1 / n1):+.2f} pp | Fisher exact p = {fisher_exact(k1, n1, k2, n2):.2e}")
     for L in SEQ_LENGTHS:
         (k1, n1), (k2, n2) = flags(ra, L), flags(rb, L)
-        if n1 and n2:
-            print(f"  within the first {L} tokens: {k1}/{n1} = {100 * k1 / n1:.2f}% vs {k2}/{n2} = {100 * k2 / n2:.2f}% | Fisher exact p = {fisher_exact(k1, n1, k2, n2):.2e}")
+        counts = f"{k1}/{n1} = {pct(k1, n1)} vs {k2}/{n2} = {pct(k2, n2)}"
+        if min(n1, n2) >= MIN_ELIGIBLE:
+            print(f"  within the first {L} tokens: {counts} | Fisher exact p = {fisher_exact(k1, n1, k2, n2):.2e}")
+        else:
+            print(f"  within the first {L} tokens: {counts} | n/a (fewer than {MIN_ELIGIBLE} eligible rollouts in a cell)")
     A, B_ = load(a, args.arm, args.outcome), load(b, args.arm, args.outcome)
     for conv in CONVENTIONS:
         print(f"== per-token rate, {conv} (secondary) ==")

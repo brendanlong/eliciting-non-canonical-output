@@ -805,9 +805,9 @@ fraction of rollouts with at least one event (Wilson 95% interval, Fisher
 exact test between cells) and the same flag restricted to the first L
 tokens among rollouts that reached L (length control). The per-token rate
 and the per-rollout permutation test on pooled rates are kept for
-continuity. Every cell was recomputed with the current code so the
-windowed flags include standalone fragment events (no other number
-changed). All tables from `noncanon.compare --table`; all pairs from
+continuity. Every full-run cell (not the pilot) was recomputed with the
+current code so the windowed flags include standalone fragment events (no
+other number changed). All tables from `noncanon.compare --table`; all pairs from
 `scripts/compare_all.sh`.
 
 ### Rollouts with ≥1 event, DAPO 500, temperature 1 / top-p 1
@@ -824,8 +824,8 @@ changed). All tables from `noncanon.compare --table`; all pairs from
 | Instruct RL final | 31 (6.2%) | 4.4–8.7% | 1/499 = 0.2% | 10/388 = 2.6% | 6/77 = 7.8% | 0.0047% |
 | Tulu-3-SFT | 26 (5.2%) | 3.6–7.5% | 2/491 = 0.4% | 14/106 = 13.2% | — | 0.0342% |
 | Tulu-3-DPO | 15 (3.0%) | 1.8–4.9% | 2/498 = 0.4% | 6/168 = 3.6% | — | 0.0085% |
-| Tulu-3 RLVR | 14 (2.8%) | 1.7–4.6% | 4/498 = 0.8% | 8/249 = 3.2% | 0/1 | 0.0065% |
-| Tulu-3.1 | 17 (3.4%) | 2.1–5.4% | 4/496 = 0.8% | 1/207 = 0.5% | 0/3 | 0.0060% |
+| Tulu-3 RLVR | 14 (2.8%) | 1.7–4.6% | 4/498 = 0.8% | 8/249 = 3.2% | 0/1 (too few) | 0.0065% |
+| Tulu-3.1 | 17 (3.4%) | 2.1–5.4% | 4/496 = 0.8% | 1/207 = 0.5% | 0/3 (too few) | 0.0060% |
 
 ### Rollouts with ≥1 event, DAPO 500, recommended settings
 
@@ -833,13 +833,13 @@ changed). All tables from `noncanon.compare --table`; all pairs from
 |---|--:|---|---|---|---|--:|
 | Think-DPO | 76 (15.2%) | 12.3–18.6% | 22/498 = 4.4% | 35/498 = 7.0% | 65/388 = 16.8% | 0.0032% |
 | Think RL final | 10 (2.0%) | 1.1–3.6% | 1/500 = 0.2% | 1/500 = 0.2% | 3/457 = 0.7% | 0.0008% |
-| Instruct-SFT | 2 (0.4%) | 0.1–1.4% | 1/425 = 0.2% | 0/49 | 0/23 | 0.0004% |
+| Instruct-SFT | 2 (0.4%) | 0.1–1.4% | 1/425 = 0.2% | 0/49 = 0.0% | 0/23 = 0.0% | 0.0004% |
 | Instruct-DPO | 25 (5.0%) | 3.4–7.3% | 0/498 = 0.0% | 5/328 = 1.5% | 5/86 = 5.8% | 0.0028% |
 | Instruct RL final | 5 (1.0%) | 0.4–2.3% | 0/498 = 0.0% | 2/387 = 0.5% | 1/77 = 1.3% | 0.0008% |
-| Tulu-3-SFT | 3 (0.6%) | 0.2–1.7% | 0/482 | 2/127 = 1.6% | 0/17 | 0.0026% |
-| Tulu-3-DPO | 4 (0.8%) | 0.3–2.0% | 1/492 = 0.2% | 2/149 = 1.3% | 0/4 | 0.0034% |
-| Tulu-3 RLVR | 7 (1.4%) | 0.7–2.9% | 2/498 = 0.4% | 2/219 = 0.9% | 0/4 | 0.0042% |
-| Tulu-3.1 | 11 (2.2%) | 1.2–3.9% | 4/498 = 0.8% | 5/230 = 2.2% | 0/29 | 0.0021% |
+| Tulu-3-SFT | 3 (0.6%) | 0.2–1.7% | 0/482 = 0.0% | 2/127 = 1.6% | 0/17 = 0.0% | 0.0026% |
+| Tulu-3-DPO | 4 (0.8%) | 0.3–2.0% | 1/492 = 0.2% | 2/149 = 1.3% | 0/4 (too few) | 0.0034% |
+| Tulu-3 RLVR | 7 (1.4%) | 0.7–2.9% | 2/498 = 0.4% | 2/219 = 0.9% | 0/4 (too few) | 0.0042% |
+| Tulu-3.1 | 11 (2.2%) | 1.2–3.9% | 4/498 = 0.8% | 5/230 = 2.2% | 0/29 = 0.0% | 0.0021% |
 
 ### Rollouts with ≥1 event, AIME 2024/2025 (60 × 8), temperature 1
 
@@ -858,13 +858,13 @@ changed). All tables from `noncanon.compare --table`; all pairs from
 | Think RL final | 486 | 45 (9.3%) | 7.0–12.2% | 0/486 = 0.0% | 6/486 = 1.2% | 16/451 = 3.5% |
 | RL-Zero step 300 | 436 | 58 (13.3%) | 10.4–16.8% | 7/436 = 1.6% | 10/431 = 2.3% | 27/252 = 10.7% |
 | RL-Zero step 2000 | 446 | 252 (56.5%) | 51.9–61.0% | 187/446 = 41.9% | 193/445 = 43.4% | 162/305 = 53.1% |
-| Instruct-SFT | 133 | 5 (3.8%) | 1.6–8.5% | 3/114 = 2.6% | 1/11 | — |
+| Instruct-SFT | 133 | 5 (3.8%) | 1.6–8.5% | 3/114 = 2.6% | 1/11 = 9.1% | — |
 | Instruct-DPO | 368 | 57 (15.5%) | 12.2–19.5% | 7/365 = 1.9% | 20/246 = 8.1% | 15/51 = 29.4% |
 | Instruct RL final | 460 | 25 (5.4%) | 3.7–7.9% | 1/459 = 0.2% | 8/353 = 2.3% | 4/58 = 6.9% |
-| Tulu-3-SFT | 20 | 0 (0.0%) | 0.0–16.1% | 0/20 | — | — |
-| Tulu-3-DPO | 54 | 1 (1.9%) | 0.3–9.8% | 0/54 | 0/15 | — |
+| Tulu-3-SFT | 20 | 0 (0.0%) | 0.0–16.1% | 0/20 = 0.0% | — | — |
+| Tulu-3-DPO | 54 | 1 (1.9%) | 0.3–9.8% | 0/54 = 0.0% | 0/15 = 0.0% | — |
 | Tulu-3 RLVR | 79 | 2 (2.5%) | 0.7–8.8% | 1/78 = 1.3% | 2/32 = 6.2% | — |
-| Tulu-3.1 | 87 | 2 (2.3%) | 0.6–8.0% | 1/86 = 1.2% | 0/28 | 0/1 |
+| Tulu-3.1 | 87 | 2 (2.3%) | 0.6–8.0% | 1/86 = 1.2% | 0/28 = 0.0% | 0/1 (too few) |
 
 Parsed-only (correct + incorrect) for the short-answer families: Instruct
 SFT 11/415 = 2.7%, DPO 103/496 = 20.8%, RL final 31/500 = 6.2%; Tulu SFT
@@ -903,61 +903,83 @@ per-token analysis above; no new pairs.
 | Tulu-3-SFT vs Tulu-3-DPO | 5.2% | 3.0% | 0.11 | 1.00 | 0.0039 (SFT higher) | — | 0.013 |
 | Tulu-3-DPO vs Tulu-3 RLVR | 3.0% | 2.8% | 1.00 | 0.69 | 1.00 | — | 0.59 |
 | Tulu-3-SFT vs Tulu-3 RLVR | 5.2% | 2.8% | 0.075 | 0.69 | 0.0010 (SFT higher) | — | 0.0001 |
-| Tulu-3 RLVR vs Tulu-3.1 | 2.8% | 3.4% | 0.72 | 1.00 | 0.044 (RLVR higher) | 1.00 | 0.86 |
-| Tulu-3-DPO vs Tulu-3.1 | 3.0% | 3.4% | 0.86 | 0.45 | 0.049 (DPO higher) | — | 0.50 |
-| recommended: Tulu SFT vs DPO | 0.6% | 0.8% | 1.00 | 1.00 | 1.00 | 1.00 | 0.79 |
-| recommended: Tulu DPO vs RLVR | 0.8% | 1.4% | 0.55 | 1.00 | 1.00 | 1.00 | 0.77 |
-| recommended: Tulu SFT vs RLVR | 0.6% | 1.4% | 0.34 | 0.50 | 0.63 | 1.00 | 0.56 |
-| recommended: Tulu RLVR vs 3.1 | 1.4% | 2.2% | 0.48 | 0.69 | 0.45 | 1.00 | 0.21 |
-| recommended: Tulu DPO vs 3.1 | 0.8% | 2.2% | 0.12 | 0.37 | 0.71 | 1.00 | 0.43 |
+| Tulu-3 RLVR vs Tulu-3.1 | 2.8% | 3.4% | 0.72 | 1.00 | 0.044 (RLVR higher) | n/a | 0.86 |
+| Tulu-3-DPO vs Tulu-3.1 | 3.0% | 3.4% | 0.86 | 0.45 | 0.048 (DPO higher) | — | 0.50 |
+| recommended: Tulu SFT vs DPO | 0.6% | 0.8% | 1.00 | 1.00 | 1.00 | n/a | 0.79 |
+| recommended: Tulu DPO vs RLVR | 0.8% | 1.4% | 0.55 | 1.00 | 1.00 | n/a | 0.77 |
+| recommended: Tulu SFT vs RLVR | 0.6% | 1.4% | 0.34 | 0.50 | 0.63 | n/a | 0.56 |
+| recommended: Tulu RLVR vs 3.1 | 1.4% | 2.2% | 0.48 | 0.69 | 0.45 | n/a | 0.21 |
+| recommended: Tulu DPO vs 3.1 | 0.8% | 2.2% | 0.12 | 0.37 | 0.71 | n/a | 0.43 |
 | correct only: Think-SFT vs Think-DPO | 9.2% | 54.2% | 2e-53 | 6e-9 | 2e-28 | 1e-64 | < 0.00005 |
 | correct only: Think-DPO vs Think RL final | 54.2% | 9.3% | 5e-54 | 9e-12 | 3e-27 | 9e-65 | < 0.00005 |
 | correct only: Think-SFT vs Think RL final | 9.2% | 9.3% | 1.00 | 0.24 | 0.75 | 0.56 | 0.61 |
 | correct only: RL-Zero 300 vs 2000 | 13.3% | 56.5% | 4e-43 | 7e-56 | 2e-54 | 1e-27 | 0.0001 |
 | correct only: Instruct-SFT vs DPO | 3.8% | 15.5% | 0.0002 | 0.71 | 1.00 | — | 0.0024 |
-| correct only: Instruct-DPO vs RL final | 15.5% | 5.4% | 2e-6 | 0.025 | 0.0012 | 0.0024 | < 0.00005 |
+| correct only: Instruct-DPO vs RL final | 15.5% | 5.4% | 2e-6 | 0.025 | 0.0013 | 0.0024 | < 0.00005 |
 
 Cells marked — have no rollouts that long in one cell (Instruct-SFT and
-Tulu answers are short).
+Tulu answers are short); n/a marks windows with fewer than 10 eligible
+rollouts in a cell, which are not tested.
 
-**Prediction status under the rollout metric.** Every status recorded
-above stands. Prediction 3 (on-policy RL raises the rate) remains refuted
-on the Think and Instruct ladders (RL final below DPO with Fisher p ≤
-1e-11 in both arms and in every length window) and unsupported on Tulu
-(all p ≥ 0.1). Prediction 4 (SFT ≈ DPO): refuted on Think (11.8% vs
-55.0%, p = 7e-50), and on Instruct the overall difference (3.4% vs 21.0%)
-vanishes within the first 256 or 1,024 tokens (p = 1.00 / 0.49), i.e. it
-is a length effect. Prediction 13 (Think-SFT above RL final): SFT and RL
-final are indistinguishable in every window (p ≥ 0.44). Prediction 14
+**Prediction status under the rollout metric.** Prediction 3 (on-policy
+RL raises the rate) remains refuted on the Think and Instruct ladders: RL
+final flags fewer rollouts than DPO overall in both arms (Fisher p = 1e-54
+and 1e-14 for Think, 6e-12 and 0.0003 for Instruct); the windowed tests
+agree wherever they have power (Think, all windows, both arms; Instruct
+untruncated, p = 0.021 / 0.0012 / 0.0002) and are not significant in the
+sparse Instruct recommended-arm windows (p = 1.00 / 0.26 / 0.21). On Tulu
+no RL checkpoint flags more rollouts than its DPO (overall p ≥ 0.5; the
+only window differences, p = 0.04–0.05 at 1,024 tokens, go the other way
+or involve SFT). Prediction 4 (SFT ≈ DPO): refuted on Think (11.8% vs
+55.0%, p = 7e-50); on Instruct the overall difference (3.4% vs 21.0%,
+p = 1e-18) is not seen within the first 256 or 1,024 tokens (p = 1.00 /
+0.49, the latter over 31 SFT rollouts). Prediction 13 (Think-SFT above RL
+final): indistinguishable in every window (p ≥ 0.44). Prediction 14
 (RL-Zero rises with training): 14.6% → 58.4% (p = 8e-49), and within the
 first 256 tokens 1.8% → 43.0%.
 
-What the length control adds, beyond the earlier analysis:
+Two statuses recorded under the per-token metric change under this one:
+Instruct-SFT vs Instruct-DPO reverses direction (per token SFT was
+higher, permutation p = 0.044; by rollouts DPO flags 6× more, p = 1e-18),
+and Tulu-3-SFT vs Tulu-3-DPO goes from distinguishable (permutation
+p = 0.013) to not (5.2% vs 3.0%, p = 0.11). Everything else keeps its
+status.
+
+What the length windows show, beyond the earlier analysis:
 - **RL-Zero's events come early; Think-DPO's accumulate with length.**
   Overall the two are level (58.4% vs 55.0%, p = 0.31), but within the
   first 256 tokens Zero flags 43.0% of rollouts against DPO's 7.4%
   (p = 6e-41), and by 4,096 tokens they meet (53.2% vs 53.2%). The same
   crossover appears on AIME (42.5% vs 8.2% at 256; 47.5% vs 54.5% at
   4,096).
-- **The DAPO-vs-AIME differences within a model are length.** Every
-  within-model window test has p ≥ 0.12 while the overall flag rates
-  differ (p ≤ 0.0045) because AIME rollouts are longer.
-- **Instruct-DPO's excess over Instruct-SFT is length; its excess over
-  RL final is not.** DPO vs RL final holds in all three windows (p = 0.021,
-  0.0012, 0.0002) and in correct rollouts only.
-- **Tulu-SFT's word-salad rollouts are the long ones:** SFT vs DPO or RLVR
-  is only distinguishable within the first 1,024 tokens (p = 0.004,
-  0.001), among the 106 SFT rollouts that reached that length.
+- **Within a model, DAPO and AIME agree in every window** (p ≥ 0.12)
+  while their overall flag rates differ (p ≤ 0.0045); AIME rollouts are
+  longer. Consistent with the DAPO-vs-AIME difference being length,
+  though the windows do not prove it.
+- **Instruct-DPO vs RL final holds in all three windows** (p = 0.021,
+  0.0012, 0.0002) and in correct rollouts only. Instruct-SFT vs DPO does
+  not (p = 1.00 at 256; p = 0.49 at 1,024 over 31 SFT rollouts), so the
+  windows cannot say whether that gap is anything but length.
+- **Tulu-SFT vs DPO or RLVR is distinguishable only within the first
+  1,024 tokens** (p = 0.004, 0.001), among the 106 SFT rollouts that
+  reached that length, which are the word-salad ones.
 
 *Notes from Claude:* the windowed flag is a fixed-horizon "has the first
 event happened by token L" and is compared only among rollouts that
 reached L, so it conditions on length rather than adjusting for it; a
 cell whose long rollouts are its degenerate ones (Tulu-SFT) will look
-worse in the long windows for that reason. The per-token permutation and
-the Fisher test disagree in sign for Instruct-SFT vs DPO (SFT has the
-higher pooled rate because its few events sit in short rollouts, while
-DPO flags 6× more rollouts); the rollout numbers are the ones the amended
-plan treats as primary.
+worse in the long windows for that reason, and a cell with few long
+rollouts (Instruct-SFT: 31 past 1,024 tokens, none past 4,096) gives the
+long windows no power, so a null there is not evidence of a length
+effect. The per-token permutation and the Fisher test disagree in sign
+for Instruct-SFT vs DPO (SFT has the higher pooled rate because its few
+events sit in short rollouts, while DPO flags 6× more rollouts); the
+rollout numbers are the ones the amended plan treats as primary. The
+pairwise table holds 37 pairs × up to 4 tests; at that count a few
+p-values near 0.05 are expected by chance, and the Tulu 1,024-token
+entries at p = 0.04–0.05 should be read that way. Windows with fewer
+than 10 eligible rollouts in either cell are shown as n/a rather than
+tested.
 
 ## Reproduction
 
@@ -1004,8 +1026,11 @@ on-box copies uploaded by early runs were produced by earlier versions of
 uv run python -m noncanon.metrics --tokenizer <checkpoint> --revision <revision> --records out/<run>/<prompt set>/*.parquet --out-dir out/<run>/<prompt set>/metrics
 ```
 
-(`--revision` matters only for step checkpoints such as `rlzero-math-step300`;
-the tokenizer is identical across the family.)
+(`--revision` matters only for step checkpoints such as `rlzero-math-step300`.
+Within the OLMo-3 family the BPE vocabulary is identical and only the names
+of a few added control tokens differ, all of which are excluded as special,
+so any family member's tokenizer gives the same numbers; the recompute
+script still uses each track's own.)
 
 Comparisons per the analysis specification. Since 2026-09-04 `noncanon.compare`
 prints the rollout-level numbers first (flag fraction with Wilson interval,

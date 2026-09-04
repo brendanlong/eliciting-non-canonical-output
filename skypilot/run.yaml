@@ -12,8 +12,14 @@
 # To queue several checkpoints on one box (cheap, short-output models), set
 # JOBS to a space-separated list of "model:revision:run_name" entries; it
 # overrides MODEL/REVISION/RUN_NAME. Each checkpoint is generated, measured
-# and uploaded before the next starts; a generation or upload failure stops
-# the queue (later checkpoints are not attempted), a metrics failure does not.
+# and uploaded before the next starts; a generation failure stops the queue
+# (later checkpoints are not attempted), a metrics failure does not.
+#
+# The records exist only on this box until they are on the Hub, and with
+# `-i 20 --down` the cluster is torn down 20 minutes after the job ends,
+# whether it succeeded or failed. So every generation is uploaded as soon as
+# it finishes, and an upload that fails is retried every 5 minutes for up to
+# 6 hours: a job that is still running keeps the cluster from going idle.
 
 resources:
   infra: runpod
@@ -48,6 +54,13 @@ run: |
   nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
   uv run python -m noncanon.gpu_check || exit 1
   [ -n "$JOBS" ] || JOBS="$MODEL:$REVISION:$RUN_NAME"
+  upload() {  # retry for up to 6 h; the running job keeps the cluster from autostopping meanwhile
+    for attempt in $(seq 1 72); do
+      uv run python -m noncanon.upload "out/$1" "$1" --repo "$HF_DATASET" && return 0
+      echo ">>> upload of $1 failed (attempt $attempt); retrying in 5 minutes"; sleep 300
+    done
+    echo ">>> upload of $1 failed for 6 hours; giving up"; exit 1
+  }
   for job in $JOBS; do
     IFS=: read -r MODEL REVISION RUN_NAME <<< "$job"
     [ -n "$MODEL" ] && [ -n "$REVISION" ] && [ -n "$RUN_NAME" ] || { echo ">>> bad JOBS entry '$job' (want model:revision:run_name)"; exit 1; }
@@ -64,13 +77,12 @@ run: |
       mkdir -p "$OUT"
       uv run python -m noncanon.generate --model "$MODEL" --revision "$REVISION" \
           --prompts "$file" --n "$n" --arms "$ARMS" --max-tokens "$MAX_TOKENS" --out-dir "$OUT" || { ok=0; break; }
+      upload "$RUN_NAME"
     done
     for OUT in out/"$RUN_NAME"/*/; do
       uv run python -m noncanon.metrics --tokenizer "$MODEL" --revision "$REVISION" \
           --records "$OUT"/*.parquet --out-dir "$OUT/metrics" || echo ">>> metrics failed for $OUT (records are still uploaded)"
     done
-    # The records only exist on this box until the upload succeeds: a failed
-    # upload fails the job so the cluster is not torn down under them.
-    uv run python -m noncanon.upload "out/$RUN_NAME" "$RUN_NAME" --repo "$HF_DATASET" || { echo ">>> upload failed for $RUN_NAME"; exit 1; }
+    upload "$RUN_NAME"  # again, now with the metrics
     [ "$ok" = 1 ] || { echo ">>> generation failed for $RUN_NAME"; exit 1; }
   done
