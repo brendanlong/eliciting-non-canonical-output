@@ -17,7 +17,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-08-28T02:31:31.092325041Z"
+exclude-newer = "2026-08-28T20:12:26.129244427Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -1807,6 +1807,7 @@ dependencies = [
     { name = "jinja2" },
     { name = "numpy" },
     { name = "pyarrow" },
+    { name = "scipy" },
     { name = "transformers" },
 ]
 
@@ -1827,6 +1828,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pyarrow", specifier = ">=15" },
+    { name = "scipy", specifier = ">=1.18.1" },
     { name = "transformers", specifier = ">=4.57,<5" },
     { name = "vllm", marker = "extra == 'gpu'", specifier = "==0.11.*" },
 ]

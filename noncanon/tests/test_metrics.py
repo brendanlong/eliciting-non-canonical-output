@@ -136,6 +136,30 @@ def test_truncated_rollout_drops_its_last_word(an):
     assert b["excluded_truncated"] == 0 and b["n_tokens"] == len(ids)
 
 
+def test_out_of_vocabulary_id_is_its_own_event(an):
+    # An id beyond the tokenizer (a padding row of the LM head) has no text;
+    # the words around it are still measured and it counts as one event.
+    oov = len(an.tok) + 5
+    left, right = enc(an, "The quick brown fox"), enc(an, " jumps over the lazy dog")
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", left + [oov] + right))
+    assert a["excluded_oov"] == 1 and a["excluded_utf8"] == 0
+    assert a["n_tokens"] == len(left) + len(right) and a["nc_canonical"] == 0
+    assert a["fragment_events"] == 1 and a["fragment_events_standalone"] == 1 and a["nc_events"] == 1
+    assert a["spans"][0]["shape"] == "oov-id" and a["spans"][0]["emitted"] == [f"⟨id {oov}⟩"]
+    assert "⟨id" in a["transcript"] or "jumps" in a["transcript"]
+
+
+def test_consecutive_out_of_vocabulary_ids_are_one_event(an):
+    # Like a run of undecodable bytes, a run of OOV ids is one event with
+    # every id excluded, so the headline rate treats the two classes alike.
+    oov = [len(an.tok) + 5, len(an.tok) + 6, len(an.tok) + 7]
+    left, right = enc(an, "The quick brown fox"), enc(an, " jumps over the lazy dog")
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", left + oov + right))
+    assert a["excluded_oov"] == 3 and a["n_tokens"] == len(left) + len(right)
+    assert a["fragment_events"] == 1 and a["nc_events"] == 1 and a["nc_canonical"] == 0
+    assert a["spans"][0]["emitted"] == [f"⟨id {t}⟩" for t in oov]
+
+
 def test_truncated_tail_without_whitespace_loses_at_most_a_few_tokens(an):
     # A long Chinese passage has no whitespace tokens; the cut must not
     # discard it all the way back to the last space.
@@ -175,7 +199,7 @@ def test_summarize_denominators():
             "nc_canonical": len(nc_positions), "nc_events": len(nc_positions), "nc_emitted": len(nc_positions), "nc_events_think": 0,
             "nc_spans": len(nc_positions), "nc_positions": nc_positions, "nc_classes": {}, "all_classes": {"word": n},
             "seq_flags": {str(L): any(p < L for p in nc_positions) for L in (256, 1024, 4096)},
-            "excluded_utf8": 0, "excluded_truncated": 0, "finish_reason": finish, "correct": correct,
+            "excluded_utf8": 0, "excluded_oov": 0, "excluded_truncated": 0, "finish_reason": finish, "correct": correct,
             "think_closed": None, "entropy_mean": 0.5, "entropy_at_nc": [], "span_shapes": {}, "fragment_events": 0, "fragment_events_standalone": 0, "transcript": "",
         }
 
@@ -185,3 +209,27 @@ def test_summarize_denominators():
     assert s["seq_flag_rate"]["4096"] == 0.0  # only the truncated rollout reached 4096
     assert s["accuracy"] == 1.0 and s["by_outcome"]["truncated"]["rollouts"] == 1
     assert set(s["by_length_quartile"]) == {"q1", "q2", "q3", "q4"}
+
+
+def test_rollout_tests_take_flagged_counts():
+    # Thin wrappers over scipy: the arguments are (flagged, eligible) per cell.
+    from noncanon.compare import MIN_ELIGIBLE, fisher_exact, flags, wilson
+
+    assert abs(fisher_exact(3, 4, 1, 4) - 0.4857) < 1e-3  # [[3,1],[1,3]]: classic two-sided value
+    assert abs(fisher_exact(1, 5, 9, 10) - 0.0170) < 1e-3  # [[1,4],[9,1]]: P(x=1) + P(x=0) = (50 + 1) / 3003
+    assert fisher_exact(0, 500, 0, 500) == 1.0
+    lo, hi = wilson(51, 500)
+    assert 0.078 < lo < 0.080 and 0.130 < hi < 0.132  # 10.2% flagged: Wilson [7.9%, 13.1%]
+    rows = [{"nc_events": 1, "n_tokens": 300, "event_positions": [200]}, {"nc_events": 0, "n_tokens": 2000, "event_positions": []}, {"nc_events": 2, "n_tokens": 100, "event_positions": [5, 50]}]
+    assert flags(rows) == (2, 3) and flags(rows, 256) == (1, 2) and flags(rows, 1024) == (0, 1)
+    assert MIN_ELIGIBLE >= 2
+
+
+def test_window_flag_counts_a_standalone_fragment(an):
+    # A lone incomplete byte between words is an event (Brendan's +1 rule) and
+    # must trip the fixed-window flag like a span would.
+    left, right = enc(an, "The quick brown fox"), enc(an, " jumps over the lazy dog")
+    bad = next(t for t in range(0, 100256) if (b := an.token_bytes([t])[0]) and (b[0] & 0xC0) == 0x80 and len(b) == 1)
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", left + [bad] + right))
+    assert a["fragment_events_standalone"] == 1 and a["nc_events"] == 1
+    assert a["event_positions"] == [len(left)] and a["seq_flags"]["256"] is True

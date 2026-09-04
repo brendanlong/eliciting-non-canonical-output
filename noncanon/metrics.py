@@ -29,7 +29,7 @@ import codecs
 import json
 import re
 import statistics
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -85,6 +85,7 @@ class Span:
 class Rollout:
     ids: list[int]
     excluded_utf8: int = 0  # tokens whose bytes are not valid UTF-8 (cut mid-character, or garbage)
+    excluded_oov: int = 0  # ids beyond the tokenizer's vocabulary (padding rows of the LM head)
     excluded_truncated: int = 0  # trailing tokens dropped because the cap cut a word
     spans: list[Span] = field(default_factory=list)
     n_canonical: int = 0  # canonical tokens over all measured runs
@@ -98,13 +99,26 @@ class Analyzer:
         # all_special_ids covers only eos/pad on OLMo-3; <|im_start|>, <|im_end|>
         # and the other control tokens are "added tokens" not flagged special.
         self.special = set(self.tok.all_special_ids) | set(self.tok.added_tokens_decoder)
+        self.vocab_size = len(self.tok)  # len() on a fast tokenizer rebuilds the vocab each call; cache it
+        # is_oov() is a range test; it is only right if every named id, added tokens included, sits below len().
+        assert max(self.tok.added_tokens_decoder, default=-1) < self.vocab_size, "non-contiguous vocabulary"
 
     def token_bytes(self, ids: list[int]) -> list[bytes]:
-        """Exact bytes of each token (byte-level BPE maps one char per byte)."""
+        """Exact bytes of each token (byte-level BPE maps one char per byte).
+
+        An id the tokenizer cannot name (sampled from a padding row of the LM
+        head, beyond the vocabulary) has no bytes and yields ``b""``.
+        """
         out = []
         for t, s in zip(ids, self.tok.convert_ids_to_tokens(ids)):
-            out.append(s.encode() if t in self.special else bytes(_BYTE_DECODER[c] for c in s))
+            if s is None:
+                out.append(b"")
+            else:
+                out.append(s.encode() if t in self.special else bytes(_BYTE_DECODER[c] for c in s))
         return out
+
+    def is_oov(self, t: int) -> bool:
+        return t >= self.vocab_size
 
     def piece(self, t: int) -> str:
         return self.tok.decode([t], skip_special_tokens=False, clean_up_tokenization_spaces=False)
@@ -148,7 +162,14 @@ class Analyzer:
             cut = last_word_start(self.token_bytes(ids))
             r.excluded_truncated = len(ids) - cut
             ids = ids[:cut]
-        for offset, run in ordinary_runs(ids, self.special):
+        # Out-of-vocabulary ids are not text: they end a run, are excluded from
+        # the measurement, and are reported as their own fragment class.
+        oov = [i for i, t in enumerate(ids) if self.is_oov(t)]
+        for group in consecutive_groups(oov):  # a run of OOV ids is one event, like a run of undecodable bytes
+            r.fragments.append((group[0], [ids[i] for i in group]))
+        r.excluded.update(oov)
+        r.excluded_oov = len(oov)
+        for offset, run in ordinary_runs(ids, self.special | {ids[i] for i in oov}):
             kept = set()
             for s, e in decodable_segments(self.token_bytes(run)):
                 kept.update(range(s, e))
@@ -206,17 +227,18 @@ class Analyzer:
         # separate byte tokens and never completed it (or emitted stray bytes).
         # These bytes have no text form, so they cannot be scored canonical or
         # not; they are reported as their own event class.
-        for start, frag_ids in r.fragments:
+        for start, frag_ids in sorted(r.fragments):
+            is_oov = any(self.is_oov(t) for t in frag_ids)
             spans_out.append(
                 {
                     "pos": start,
                     "region": region(start),
-                    "emitted": [self.piece(t) for t in frag_ids],
+                    "emitted": [f"⟨id {t}⟩" if self.is_oov(t) else self.piece(t) for t in frag_ids],
                     "emitted_bytes": [self.token_bytes([t])[0].hex() for t in frag_ids],
                     "canonical": None,
                     "context": b"".join(all_bytes[max(0, start - 8) : start]).decode(errors="replace"),
-                    "classes": ["fragment"] * len(frag_ids),
-                    "shape": "byte-fragment",
+                    "classes": ["oov" if is_oov else "fragment"] * len(frag_ids),
+                    "shape": "oov-id" if is_oov else "byte-fragment",
                 }
             )
         # Counting rule for fragments (Brendan, 2026-09-03): a fragment adjacent
@@ -230,6 +252,9 @@ class Analyzer:
         ]
         nc_events = sum(len(sp.canonical) for sp in r.spans) + len(standalone)
         n_units = r.n_canonical + len(standalone)
+        # Ordinal (among measured tokens) of every event start: span starts and
+        # standalone fragments, for the fixed-window rollout flags.
+        event_positions = sorted([ordinal[sp.start] for sp in r.spans] + [bisect_left(measured, start) for start, _ in standalone])
         n_think = sum(region(i) == "think" for i in measured)
         answer_text = full[answer_from:].decode(errors="replace") if answer_from is not None else ""
         transcript = render_transcript(all_bytes, {i for start, frag in r.fragments for i in range(start, start + len(frag))})
@@ -259,8 +284,10 @@ class Analyzer:
             "nc_positions": [ordinal[i] for i in nc_emitted],
             "nc_classes": Counter(classes[i] for i in nc_emitted),
             "all_classes": Counter(classes.values()),
-            "seq_flags": {str(L): any(ordinal[i] < L for i in nc_emitted) for L in SEQ_LENGTHS},
+            "event_positions": event_positions,
+            "seq_flags": {str(L): bool(event_positions) and event_positions[0] < L for L in SEQ_LENGTHS},
             "excluded_utf8": r.excluded_utf8,
+            "excluded_oov": r.excluded_oov,
             "excluded_truncated": r.excluded_truncated,
             "pred": pred,
             "correct": correct,
@@ -476,6 +503,7 @@ def summarize(rows: list[dict]) -> dict:
         "finish_reasons": dict(Counter(r["finish_reason"] for r in rows)),
         "think_closed": dict(Counter(str(r["think_closed"]) for r in rows)),
         "excluded_utf8": sum(r["excluded_utf8"] for r in rows),
+        "excluded_oov": sum(r.get("excluded_oov", 0) for r in rows),
         "excluded_truncated": sum(r["excluded_truncated"] for r in rows),
         "emitted_tokens": sum(r["n_tokens"] for r in rows),
         "canonical_tokens": canonical,
@@ -525,17 +553,18 @@ def to_markdown(name: str, s: dict) -> str:
         "",
         f"- rollouts: {s['rollouts']}; finish: {s['finish_reasons']}; think closed: {s['think_closed']}; "
         f"accuracy (finished, parsed): {_pct(s['accuracy'])}; excluded tokens: {s['excluded_utf8']} incomplete UTF-8, "
-        f"{s['excluded_truncated']} cut last word",
+        f"{s['excluded_oov']} out-of-vocabulary ids, {s['excluded_truncated']} cut last word",
         f"- length (emitted tokens): mean {s['length']['mean']}, median {s['length']['median']}, p90 {s['length']['p90']}, max {s['length']['max']}",
-        f"- **per-token non-canonical rate: {_pct(s['per_token_rate'])}** ({s['nc_events']} of {s['units']} units = canonical tokens in "
+        f"- **rollouts with ≥1 non-canonical event: {s['rollouts_with_nc']}/{s['rollouts']} ({_pct(_rate(s['rollouts_with_nc'], s['rollouts']))})**; "
+        f"within the first L={list(s['seq_flag_rate'])} tokens, among rollouts that long: {[_pct(v) for v in s['seq_flag_rate'].values()]}",
+        f"- per-token non-canonical rate: {_pct(s['per_token_rate'])} ({s['nc_events']} of {s['units']} units = canonical tokens in "
         f"{s['spans']} spans + {s['fragment_events_standalone']} standalone byte-fragment events; {s['nc_emitted']} emitted tokens in spans, "
-        f"{s['spans_per_1k_tokens']} spans/1k tokens; {s['rollouts_with_nc']}/{s['rollouts']} rollouts with ≥1 event; span shapes {s['span_shapes']})",
+        f"{s['spans_per_1k_tokens']} spans/1k tokens; span shapes {s['span_shapes']})",
         f"- segmentation only (fragments excluded): {_pct(s['per_token_rate_segmentation_only'])} ({s['nc_canonical']} of {s['canonical_tokens']}), "
         f"{s['rollouts_with_spans_only']}/{s['rollouts']} rollouts; byte fragments: {s['fragment_events']} events ({s['fragment_events_standalone']} standalone, "
         f"the rest adjacent to a span), {s['excluded_utf8']} tokens, {s['rollouts_with_fragments']}/{s['rollouts']} rollouts",
         f"- think: {_pct(_rate(think['nc'], think['tokens']))} ({think['nc']} / {think['tokens']}); "
         f"answer: {_pct(_rate(answer['nc'], answer['tokens']))} ({answer['nc']} / {answer['tokens']})",
-        f"- sequence-level flag rate at L={list(s['seq_flag_rate'])}: {[_pct(v) for v in s['seq_flag_rate'].values()]}",
         f"- entropy (top-k, nats): all positions {s['entropy']['mean_all_positions']}, at non-canonical positions {s['entropy']['mean_at_nc_positions']}",
         "",
         "| token class | tokens | non-canonical | rate |",

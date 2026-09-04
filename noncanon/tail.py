@@ -8,7 +8,7 @@ position, the rank of the first token of each non-canonical span, and the
 special case of spans that begin with a bare space token (canonical only
 before a digit in cl100k-style tokenizers), where the deviation is the
 token after the space. Byte fragments are excluded from the span
-statistics. Descriptive only.
+statistics (as are out-of-vocabulary ids). Descriptive only.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def analyze_run(an: Analyzer, run_dir: Path) -> None:
         beyond_k_all.append(1 - cum[:, k - 1])
         a = an.analyze(rec)
         for sp in a["spans"]:
-            if sp["shape"] == "byte-fragment" or sp["pos"] >= len(rank):
+            if sp["canonical"] is None or sp["pos"] >= len(rank):  # byte fragments and OOV ids are not spans
                 continue
             all_first.append(rank[sp["pos"]])
             beyond_k_first.append(1 - cum[sp["pos"], k - 1])

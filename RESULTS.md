@@ -633,6 +633,354 @@ beyond the top-10, entropy 0.615) and has the lowest tail-start span rate,
 so a flatter tail alone does not produce spans; DPO's tail samples are
 non-canonical 11× more often than SFT's.
 
+### Launched 2026-09-04: OLMo-3 Instruct and Tulu-3 ladders, DAPO 500, both arms
+
+One box per family, checkpoints queued with `JOBS`; both arms
+(`recommended` = each checkpoint's own `generation_config.json`: OLMo-3
+0.6 / 0.95, Tulu-3 0.6 / 0.9; `untruncated` = 1.0 / 1.0).
+
+```
+sky launch -c nc-instruct skypilot/run.yaml --retry-until-up -i 20 --down -y -d --env HF_TOKEN \
+    --env ARMS=recommended,untruncated --env PROMPTS="prompts/dapo_sample500.jsonl" \
+    --env JOBS="allenai/Olmo-3-7B-Instruct-SFT:main:instruct-sft allenai/Olmo-3-7B-Instruct-DPO:main:instruct-dpo allenai/Olmo-3-7B-Instruct:main:instruct-main"
+sky launch -c nc-tulu skypilot/run.yaml --retry-until-up -i 20 --down -y -d --env HF_TOKEN \
+    --env ARMS=recommended,untruncated --env PROMPTS="prompts/dapo_sample500.jsonl" \
+    --env JOBS="allenai/Llama-3.1-Tulu-3-8B-SFT:main:tulu3-sft allenai/Llama-3.1-Tulu-3-8B-DPO:main:tulu3-dpo allenai/Llama-3.1-Tulu-3-8B:main:tulu3-rlvr allenai/Llama-3.1-Tulu-3.1-8B:main:tulu31-rlvr"
+```
+
+Prompt overlap for Tulu: none of the 500 DAPO prompts matches a prompt in
+Tulu 3's public RLVR sets (`allenai/RLVR-GSM-MATH-IF-Mixed-Constraints`,
+29,946 rows; `allenai/RLVR-MATH`, 7,500 rows), by the same normalized
+exact/prefix rule used for the OLMo-3 filter. Tulu's SFT mixture was not
+checked. The Instruct ladder shares the OLMo-3 filter already applied.
+
+### OLMo-3 Instruct ladder, DAPO 500, both arms (2026-09-04)
+
+Same base and code as the Think track, short-answer post-training (no
+think block). Recommended = 0.6 / 0.95. "Parsed-only" = rate over the
+correct + incorrect outcome buckets (excludes truncated and unparsed
+rollouts), the stand-in for judge-conditioning until the judge exists.
+
+| checkpoint | arm | rollouts with ≥1 event | units | non-canonical | **rate** | 95% CI | parsed-only rate | mean tokens | finish (stop / cap) | accuracy |
+|---|---|--:|--:|--:|--:|---|--:|--:|---|--:|
+| Instruct-SFT | untruncated | 17 / 500 | 269,205 | 72 | 0.0267% | 0.0100–0.0482% | 0.0261% | 538 | 500 / 0 | 32.0% (85 unparsed) |
+| Instruct-SFT | recommended | 2 / 500 | 913,241 | 4 | 0.0004% | 0.0000–0.0013% | 0.0015% | 1,826 | 482 / 18 | 38.9% (35 unparsed) |
+| Instruct-DPO | untruncated | 105 / 500 | 1,701,689 | 316 | 0.0186% | 0.0153–0.0221% | 0.0187% | 3,403 | 498 / 2 | 74.2% |
+| Instruct-DPO | recommended | 25 / 500 | 1,755,763 | 50 | 0.0028% | 0.0018–0.0040% | 0.0021% | 3,512 | 485 / 15 | 80.4% |
+| Instruct (RL final) | untruncated | 31 / 500 | 1,272,567 | 60 | 0.0047% | 0.0031–0.0065% | 0.0047% | 2,545 | 500 / 0 | 92.0% |
+| Instruct (RL final) | recommended | 5 / 500 | 1,253,525 | 10 | 0.0008% | 0.0002–0.0016% | 0.0008% | 2,507 | 500 / 0 | 93.6% |
+
+Notes on the cells: SFT answers are short (538 tokens at temperature 1)
+and often unparsable (85 / 500), so its untruncated CI is wide; DPO
+lengthens answers 6× and raises accuracy from 32% to 74%; at the
+recommended settings SFT and DPO run to the 32k cap in 18 and 15 rollouts
+(repetition loops), which is why those arms have more tokens than the
+untruncated ones. Instruct-DPO's recommended arm has 19 byte-fragment
+events among its 50 events; Instruct-SFT's untruncated arm 12 of its 72
+events in unparsed rollouts. Instruct (RL final) has no truncations, no
+unparsed rollouts, and 92–94% accuracy.
+
+Tests per the specification (untruncated; `noncanon.compare --arm untruncated`):
+- SFT vs DPO: DPO − SFT = −0.0082 pp, per-token z = 2.8 (p = 0.005),
+  per-rollout permutation p = 0.044.
+- DPO vs RL final: −0.0139 pp, per-token z = 10.5 (p = 7e-26),
+  per-rollout p < 0.00005.
+- SFT vs RL final: −0.0220 pp, per-token z = 11.2 (p = 3e-29),
+  per-rollout p < 0.00005.
+Recommended arm, headline convention: SFT vs DPO +0.0024 pp, z = 4.2
+(p = 3e-5), per-rollout p = 0.002; DPO vs RL final −0.0021 pp, z = 3.9
+(p = 9e-5), per-rollout p = 0.004; SFT vs RL final +0.0004 pp, z = 1.0
+(p = 0.30), per-rollout p = 0.51. Segmentation-only convention: 19 of
+Instruct-DPO's 50 recommended-arm events are byte fragments, so its rate
+drops to 0.0018% (CI 0.0010–0.0027%) and the DPO vs RL final contrast
+weakens to −0.0010 pp, z = 2.2 (p = 0.025), per-rollout p = 0.11 (SFT vs
+DPO: +0.0013 pp, z = 2.8, p = 0.005, per-rollout p = 0.039). The
+untruncated-arm tests are unchanged to the printed precision under the
+segmentation-only convention.
+
+**Prediction status.** Prediction 3 (RL final above DPO): refuted again
+on this ladder, in both arms (RL final about 4× below DPO untruncated;
+3.5× below at the recommended settings under the headline convention,
+2.3× and only per-token significant under segmentation-only). Prediction 4 (SFT ≈ DPO): not
+supported; SFT is above DPO per token at temperature 1 (p = 0.044 at the
+rollout level) and below it at the recommended settings, but the SFT
+cell's short, often-unparsable answers make it the least comparable cell
+in the ladder. The Think-ladder pattern "DPO high, RL final low"
+replicates here; the "SFT low" part does not.
+
+### Tulu-3-8B ladder (Llama-3.1 base), DAPO 500, both arms (2026-09-04)
+
+Different base and tokenizer (Llama-3 128k vocabulary, three-digit
+number tokens), the recipe OLMo-3 Instruct descends from (SFT → DPO →
+RLVR via open-instruct; Tulu 3.1 = the same RLVR stage redone with GRPO
+instead of PPO plus hyperparameter retuning, per its model card, *not* a
+longer run of the same recipe). Recommended = 0.6 / 0.9. This family solves few DAPO problems
+(4–20%), so most rollouts land in the "incorrect" bucket; "parsed-only"
+is as above (correct + incorrect buckets).
+
+| checkpoint | arm | rollouts with ≥1 event | units | non-canonical | **rate** | 95% CI | parsed-only rate | mean tokens | finish (stop / cap) | accuracy |
+|---|---|--:|--:|--:|--:|---|--:|--:|---|--:|
+| Tulu-3-SFT | untruncated | 26 / 500 | 406,245 | 139 | 0.0342% | 0.0133–0.0632% | 0.0093% | 812 | 500 / 0 | 4.2% (22 unparsed) |
+| Tulu-3-SFT | recommended | 3 / 500 | 913,159 | 24 | 0.0026% | 0.0000–0.0067% | 0.0062% | 1,826 | 484 / 16 | 8.3% (2 unparsed) |
+| Tulu-3-DPO | untruncated | 15 / 500 | 471,312 | 40 | 0.0085% | 0.0035–0.0153% | 0.0085% | 943 | 500 / 0 | 10.8% (2 unparsed) |
+| Tulu-3-DPO | recommended | 4 / 500 | 531,796 | 18 | 0.0034% | 0.0004–0.0078% | 0.0039% | 1,064 | 498 / 2 | 12.9% (2 unparsed) |
+| Tulu-3 (RLVR) | untruncated | 14 / 500 | 555,914 | 36 | 0.0065% | 0.0031–0.0104% | 0.0065% | 1,112 | 500 / 0 | 15.9% (2 unparsed) |
+| Tulu-3 (RLVR) | recommended | 7 / 500 | 621,759 | 26 | 0.0042% | 0.0010–0.0084% | 0.0048% | 1,244 | 497 / 3 | 16.0% (4 unparsed) |
+| Tulu-3.1 (GRPO RLVR) | untruncated | 17 / 500 | 551,966 | 33 | 0.0060% | 0.0028–0.0101% | 0.0061% | 1,104 | 500 / 0 | 17.6% (7 unparsed) |
+| Tulu-3.1 (GRPO RLVR) | recommended | 11 / 500 | 1,215,178 | 25 | 0.0021% | 0.0008–0.0039% | 0.0045% | 2,430 | 480 / 20 | 19.6% (5 unparsed) |
+
+Notes on the cells: Tulu-3-SFT at temperature 1 collapses into word
+salad in a subset of rollouts (the 22 unparsed rollouts, e.g. a 2,482-token
+rollout ending in a run of underscores and asterisks, another ending in
+"completechecks_my ({unit_requipiter refresh intuition stand …"); those 22
+rollouts hold 103 of its 139 events, so its headline rate (0.0342%) is a
+degenerate-text rate and the parsed-only rate (0.0093%) is the comparable
+number. At the recommended settings the SFT and Tulu-3.1 checkpoints run
+to the 32k cap in 16 and 20 rollouts (repetition loops; zero events in
+them), which inflates those arms' unit counts and lowers their headline
+rates below the parsed-only ones. Tulu-3-SFT untruncated has 2
+byte-fragment events and 1 OOV-id event (token id 128262, an unused row of
+the LM head; see the incident note above); every other Tulu cell has none,
+so the two counting conventions differ only in the two SFT pairs (SFT
+0.0342% headline vs 0.0335% segmentation-only) and agree exactly elsewhere.
+Most common spans, untruncated: SFT `_g|iven` → `_given`; DPO `_be|ads` →
+`_b|ead|s` (4×), `)]|:` → `)|]:` (3×); RLVR `б|ов`, `c|ulated`; 3.1
+`_f|rant|ic` → `_fr|antic` (4×), `**|\n\n`. Whitespace-first spans: none in
+DPO, RLVR or 3.1; 3 in SFT, one of them the OLMo-3 DPO shape (` |/result`
+→ ` /|result`) and two starting with indentation tokens.
+
+Tests per the specification (`noncanon.compare --arm untruncated`;
+headline convention, with the segmentation-only p-values differing only
+in the two SFT pairs, where they are 1.7e-16 / 0.013 and 1.3e-22 / 0.0001):
+- SFT vs DPO: DPO − SFT = −0.0257 pp, per-token z = 8.4 (p = 4e-17),
+  per-rollout permutation p = 0.013.
+- DPO vs RLVR: −0.0020 pp, z = 1.2 (p = 0.24), per-rollout p = 0.59.
+- SFT vs RLVR: −0.0277 pp, z = 10.0 (p = 2e-23), per-rollout p = 0.0001.
+- RLVR vs 3.1 (longer RL): −0.0005 pp, z = 0.3 (p = 0.74), per-rollout p = 0.86.
+- DPO vs 3.1: −0.0025 pp, z = 1.5 (p = 0.13), per-rollout p = 0.50.
+Recommended arm: SFT vs DPO +0.0008 pp, z = 0.8 (p = 0.42), per-rollout
+p = 0.79; DPO vs RLVR +0.0008 pp, z = 0.7 (p = 0.49), per-rollout p = 0.77;
+SFT vs RLVR +0.0016 pp, z = 1.7 (p = 0.10), per-rollout p = 0.56; RLVR vs
+3.1 −0.0021 pp, z = 2.6 (p = 0.01), per-rollout p = 0.21; DPO vs 3.1
+−0.0013 pp, z = 1.6 (p = 0.10), per-rollout p = 0.43.
+
+Distribution sharpness (`noncanon.tail`, untruncated): mass beyond top-1
+is 0.177 for SFT, 0.096 DPO, 0.095 RLVR, 0.104 for 3.1; span-first tokens
+at rank 1: SFT 14% (73% outside the top-10, i.e. the word-salad
+rollouts), DPO 45%, RLVR 62%, 3.1 32% (byte fragments and the OOV id
+excluded).
+
+**Prediction status.** Prediction 3 (RL final above DPO): not supported
+on this family either; RLVR and DPO are indistinguishable in both arms
+(untruncated per-rollout p = 0.59). The GRPO rerun of the RL stage (3.1)
+matches the PPO one at temperature 1 (p = 0.86) and is half its rate at
+the recommended settings (0.0021% vs 0.0042%, per-token p = 0.01,
+per-rollout p = 0.21). Prediction 4 (SFT ≈
+DPO): SFT is above DPO per token at temperature 1 (per-rollout p = 0.013),
+driven by the degenerate rollouts; on parsed rollouts only the SFT rate
+(0.0093%) is at DPO's level (0.0085%), and at the recommended settings
+the three Tulu-3 checkpoints are indistinguishable. The "DPO high, RL
+final low" pattern of the two OLMo-3 ladders does not appear here: Tulu's
+DPO is *not* elevated (0.0085% vs 0.0186% for both OLMo-3 DPO cells), and
+there is no bare-space-then-tail span class in any Tulu cell, which was
+the whole of the OLMo-3 DPO excess.
+
+*Notes from Claude:* Tulu's DPO and OLMo-3's DPO are not the same recipe
+(Tulu 3: length-normalized DPO on GPT-4o-judged pairs; OLMo 3 Instruct:
+the Dolci preference mixture; the loss variants and data differ), and
+Tulu's RLVR prompts (GSM8K, MATH, IF constraints) are much
+easier than DAPO, which the 4–20% accuracy reflects. The family's rates
+are also all low enough (33–40 events per cell outside the degenerate
+rollouts) that a 2× difference reaches per-token significance at best
+and never per-rollout significance at this sample size, as the
+recommended-arm RLVR vs 3.1 pair shows. The clean claim from this family is the absence of the DPO
+elevation, not an RL effect in either direction.
+
+## Rollout-level reanalysis: primary metric changed (Brendan, 2026-09-04)
+
+Per the plan amendment of the same date: the per-token rate is demoted
+because tokens within a rollout are not independent, so its z-test
+p-values overstate the evidence. Primary numbers from here on are the
+fraction of rollouts with at least one event (Wilson 95% interval, Fisher
+exact test between cells) and the same flag restricted to the first L
+tokens among rollouts that reached L (length control). The per-token rate
+and the per-rollout permutation test on pooled rates are kept for
+continuity. Every full-run cell (not the pilot) was recomputed with the
+current code so the windowed flags include standalone fragment events (no
+other number changed). All tables from `noncanon.compare --table`; all pairs from
+`scripts/compare_all.sh`.
+
+### Rollouts with ≥1 event, DAPO 500, temperature 1 / top-p 1
+
+| cell | with ≥1 event | Wilson 95% | within first 256 tokens (of rollouts ≥ 256) | within first 1,024 | within first 4,096 | per-token rate |
+|---|--:|---|---|---|---|--:|
+| Think-SFT | 59 (11.8%) | 9.3–14.9% | 2/500 = 0.4% | 4/500 = 0.8% | 11/440 = 2.5% | 0.0030% |
+| Think-DPO | 275 (55.0%) | 50.6–59.3% | 37/498 = 7.4% | 110/497 = 22.1% | 213/400 = 53.2% | 0.0186% |
+| Think RL final | 51 (10.2%) | 7.8–13.2% | 0/500 = 0.0% | 6/500 = 1.2% | 16/464 = 3.4% | 0.0034% |
+| RL-Zero step 300 | 73 (14.6%) | 11.8–18.0% | 9/499 = 1.8% | 14/493 = 2.8% | 33/310 = 10.6% | 0.0085% |
+| RL-Zero step 2000 | 292 (58.4%) | 54.0–62.6% | 215/500 = 43.0% | 221/499 = 44.3% | 191/359 = 53.2% | 0.0238% |
+| Instruct-SFT | 17 (3.4%) | 2.1–5.4% | 7/410 = 1.7% | 1/31 = 3.2% | — | 0.0267% |
+| Instruct-DPO | 105 (21.0%) | 17.7–24.8% | 8/497 = 1.6% | 28/348 = 8.0% | 31/102 = 30.4% | 0.0186% |
+| Instruct RL final | 31 (6.2%) | 4.4–8.7% | 1/499 = 0.2% | 10/388 = 2.6% | 6/77 = 7.8% | 0.0047% |
+| Tulu-3-SFT | 26 (5.2%) | 3.6–7.5% | 2/491 = 0.4% | 14/106 = 13.2% | — | 0.0342% |
+| Tulu-3-DPO | 15 (3.0%) | 1.8–4.9% | 2/498 = 0.4% | 6/168 = 3.6% | — | 0.0085% |
+| Tulu-3 RLVR | 14 (2.8%) | 1.7–4.6% | 4/498 = 0.8% | 8/249 = 3.2% | 0/1 (too few) | 0.0065% |
+| Tulu-3.1 | 17 (3.4%) | 2.1–5.4% | 4/496 = 0.8% | 1/207 = 0.5% | 0/3 (too few) | 0.0060% |
+
+### Rollouts with ≥1 event, DAPO 500, recommended settings
+
+| cell | with ≥1 event | Wilson 95% | within first 256 | within first 1,024 | within first 4,096 | per-token rate |
+|---|--:|---|---|---|---|--:|
+| Think-DPO | 76 (15.2%) | 12.3–18.6% | 22/498 = 4.4% | 35/498 = 7.0% | 65/388 = 16.8% | 0.0032% |
+| Think RL final | 10 (2.0%) | 1.1–3.6% | 1/500 = 0.2% | 1/500 = 0.2% | 3/457 = 0.7% | 0.0008% |
+| Instruct-SFT | 2 (0.4%) | 0.1–1.4% | 1/425 = 0.2% | 0/49 = 0.0% | 0/23 = 0.0% | 0.0004% |
+| Instruct-DPO | 25 (5.0%) | 3.4–7.3% | 0/498 = 0.0% | 5/328 = 1.5% | 5/86 = 5.8% | 0.0028% |
+| Instruct RL final | 5 (1.0%) | 0.4–2.3% | 0/498 = 0.0% | 2/387 = 0.5% | 1/77 = 1.3% | 0.0008% |
+| Tulu-3-SFT | 3 (0.6%) | 0.2–1.7% | 0/482 = 0.0% | 2/127 = 1.6% | 0/17 = 0.0% | 0.0026% |
+| Tulu-3-DPO | 4 (0.8%) | 0.3–2.0% | 1/492 = 0.2% | 2/149 = 1.3% | 0/4 (too few) | 0.0034% |
+| Tulu-3 RLVR | 7 (1.4%) | 0.7–2.9% | 2/498 = 0.4% | 2/219 = 0.9% | 0/4 (too few) | 0.0042% |
+| Tulu-3.1 | 11 (2.2%) | 1.2–3.9% | 4/498 = 0.8% | 5/230 = 2.2% | 0/29 = 0.0% | 0.0021% |
+
+### Rollouts with ≥1 event, AIME 2024/2025 (60 × 8), temperature 1
+
+| cell | with ≥1 event | Wilson 95% | within first 256 | within first 1,024 | within first 4,096 | per-token rate |
+|---|--:|---|---|---|---|--:|
+| Think-DPO | 330/480 (68.8%) | 64.5–72.7% | 39/478 = 8.2% | 118/478 = 24.7% | 255/468 = 54.5% | 0.0177% |
+| Think RL final | 110/480 (22.9%) | 19.4–26.9% | 1/480 = 0.2% | 7/480 = 1.5% | 22/480 = 4.6% | 0.0039% |
+| RL-Zero step 2000 | 323/480 (67.3%) | 63.0–71.3% | 204/480 = 42.5% | 207/480 = 43.1% | 218/459 = 47.5% | 0.0273% |
+
+### Correct rollouts only, DAPO 500, temperature 1
+
+| cell | correct rollouts | with ≥1 event | Wilson 95% | within first 256 | within first 1,024 | within first 4,096 |
+|---|--:|--:|---|---|---|---|
+| Think-SFT | 469 | 43 (9.2%) | 6.9–12.1% | 2/469 = 0.4% | 4/469 = 0.9% | 11/409 = 2.7% |
+| Think-DPO | 472 | 256 (54.2%) | 49.7–58.7% | 35/472 = 7.4% | 103/472 = 21.8% | 202/382 = 52.9% |
+| Think RL final | 486 | 45 (9.3%) | 7.0–12.2% | 0/486 = 0.0% | 6/486 = 1.2% | 16/451 = 3.5% |
+| RL-Zero step 300 | 436 | 58 (13.3%) | 10.4–16.8% | 7/436 = 1.6% | 10/431 = 2.3% | 27/252 = 10.7% |
+| RL-Zero step 2000 | 446 | 252 (56.5%) | 51.9–61.0% | 187/446 = 41.9% | 193/445 = 43.4% | 162/305 = 53.1% |
+| Instruct-SFT | 133 | 5 (3.8%) | 1.6–8.5% | 3/114 = 2.6% | 1/11 = 9.1% | — |
+| Instruct-DPO | 368 | 57 (15.5%) | 12.2–19.5% | 7/365 = 1.9% | 20/246 = 8.1% | 15/51 = 29.4% |
+| Instruct RL final | 460 | 25 (5.4%) | 3.7–7.9% | 1/459 = 0.2% | 8/353 = 2.3% | 4/58 = 6.9% |
+| Tulu-3-SFT | 20 | 0 (0.0%) | 0.0–16.1% | 0/20 = 0.0% | — | — |
+| Tulu-3-DPO | 54 | 1 (1.9%) | 0.3–9.8% | 0/54 = 0.0% | 0/15 = 0.0% | — |
+| Tulu-3 RLVR | 79 | 2 (2.5%) | 0.7–8.8% | 1/78 = 1.3% | 2/32 = 6.2% | — |
+| Tulu-3.1 | 87 | 2 (2.3%) | 0.6–8.0% | 1/86 = 1.2% | 0/28 = 0.0% | 0/1 (too few) |
+
+Parsed-only (correct + incorrect) for the short-answer families: Instruct
+SFT 11/415 = 2.7%, DPO 103/496 = 20.8%, RL final 31/500 = 6.2%; Tulu SFT
+18/478 = 3.8%, DPO 15/498 = 3.0%, RLVR 14/498 = 2.8%, 3.1 17/493 = 3.4%.
+
+### Pairwise tests, rollouts as the unit
+
+Fisher exact p on flagged rollouts (all, then within the first 256 /
+1,024 / 4,096 tokens), and the per-rollout permutation p on pooled
+per-token rates (headline convention) for continuity. Same pairs as the
+per-token analysis above; no new pairs.
+
+| pair (a vs b) | a | b | Fisher, all | first 256 | first 1,024 | first 4,096 | permutation (rates) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| Think-DPO vs Think RL final | 55.0% | 10.2% | 1e-54 | 3e-12 | 6e-29 | 3e-68 | < 0.00005 |
+| Think-DPO vs RL-Zero 2000 | 55.0% | 58.4% | 0.31 | 6e-41 (Zero higher) | 1e-13 (Zero higher) | 1.00 | 0.060 |
+| RL-Zero 2000 vs Think RL final | 58.4% | 10.2% | 9e-62 | 5e-78 | 5e-71 | 3e-65 | < 0.00005 |
+| RL-Zero 300 vs RL-Zero 2000 | 14.6% | 58.4% | 8e-49 | 3e-64 | 1e-60 | 3e-33 | < 0.00005 |
+| Think-SFT vs Think-DPO | 11.8% | 55.0% | 7e-50 | 7e-10 | 4e-31 | 2e-70 | < 0.00005 |
+| Think-SFT vs Think RL final | 11.8% | 10.2% | 0.48 | 0.50 | 0.75 | 0.44 | 0.86 |
+| RL-Zero 2000: DAPO vs AIME | 58.4% | 67.3% | 0.0045 | 0.90 | 0.75 | 0.12 | 0.39 |
+| Think-DPO: DAPO vs AIME | 55.0% | 68.8% | 1e-5 | 0.72 | 0.36 | 0.73 | 0.55 |
+| Think RL final: DAPO vs AIME | 10.2% | 22.9% | 7e-8 | 0.49 | 0.79 | 0.41 | 0.69 |
+| AIME: Think-DPO vs RL-Zero 2000 | 68.8% | 67.3% | 0.68 | 2e-36 (Zero higher) | 2e-9 (Zero higher) | 0.036 (DPO higher) | < 0.00005 |
+| AIME: Think-DPO vs Think RL final | 68.8% | 22.9% | 2e-47 | 2e-11 | 1e-30 | 2e-71 | < 0.00005 |
+| AIME: RL-Zero 2000 vs Think RL final | 67.3% | 22.9% | 1e-44 | 9e-72 | 6e-64 | 1e-56 | < 0.00005 |
+| Think RL final: untruncated vs recommended | 10.2% | 2.0% | 4e-8 | 1.00 | 0.12 | 0.0041 | 0.0001 |
+| recommended: Think-DPO vs Think RL final | 15.2% | 2.0% | 1e-14 | 2e-6 | 3e-10 | 5e-20 | < 0.00005 |
+| Think-DPO: untruncated vs recommended | 55.0% | 15.2% | 5e-41 | 0.059 | 7e-12 | 2e-27 | < 0.00005 |
+| Instruct-SFT vs Instruct-DPO | 3.4% | 21.0% | 1e-18 | 1.00 | 0.49 | — | 0.044 (SFT higher rate) |
+| Instruct-DPO vs Instruct RL final | 21.0% | 6.2% | 6e-12 | 0.021 | 0.0012 | 0.0002 | < 0.00005 |
+| Instruct-SFT vs Instruct RL final | 3.4% | 6.2% | 0.053 | 0.026 (SFT higher) | 0.58 | — | < 0.00005 (SFT higher rate) |
+| recommended: Instruct-SFT vs DPO | 0.4% | 5.0% | 4e-6 | 0.46 | 1.00 | 0.58 | 0.002 |
+| recommended: Instruct-DPO vs RL final | 5.0% | 1.0% | 0.0003 | 1.00 | 0.26 | 0.21 | 0.0037 |
+| recommended: Instruct-SFT vs RL final | 0.4% | 1.0% | 0.45 | 0.46 | 1.00 | 1.00 | 0.51 |
+| Tulu-3-SFT vs Tulu-3-DPO | 5.2% | 3.0% | 0.11 | 1.00 | 0.0039 (SFT higher) | — | 0.013 |
+| Tulu-3-DPO vs Tulu-3 RLVR | 3.0% | 2.8% | 1.00 | 0.69 | 1.00 | — | 0.59 |
+| Tulu-3-SFT vs Tulu-3 RLVR | 5.2% | 2.8% | 0.075 | 0.69 | 0.0010 (SFT higher) | — | 0.0001 |
+| Tulu-3 RLVR vs Tulu-3.1 | 2.8% | 3.4% | 0.72 | 1.00 | 0.044 (RLVR higher) | n/a | 0.86 |
+| Tulu-3-DPO vs Tulu-3.1 | 3.0% | 3.4% | 0.86 | 0.45 | 0.048 (DPO higher) | — | 0.50 |
+| recommended: Tulu SFT vs DPO | 0.6% | 0.8% | 1.00 | 1.00 | 1.00 | n/a | 0.79 |
+| recommended: Tulu DPO vs RLVR | 0.8% | 1.4% | 0.55 | 1.00 | 1.00 | n/a | 0.77 |
+| recommended: Tulu SFT vs RLVR | 0.6% | 1.4% | 0.34 | 0.50 | 0.63 | n/a | 0.56 |
+| recommended: Tulu RLVR vs 3.1 | 1.4% | 2.2% | 0.48 | 0.69 | 0.45 | n/a | 0.21 |
+| recommended: Tulu DPO vs 3.1 | 0.8% | 2.2% | 0.12 | 0.37 | 0.71 | n/a | 0.43 |
+| correct only: Think-SFT vs Think-DPO | 9.2% | 54.2% | 2e-53 | 6e-9 | 2e-28 | 1e-64 | < 0.00005 |
+| correct only: Think-DPO vs Think RL final | 54.2% | 9.3% | 5e-54 | 9e-12 | 3e-27 | 9e-65 | < 0.00005 |
+| correct only: Think-SFT vs Think RL final | 9.2% | 9.3% | 1.00 | 0.24 | 0.75 | 0.56 | 0.61 |
+| correct only: RL-Zero 300 vs 2000 | 13.3% | 56.5% | 4e-43 | 7e-56 | 2e-54 | 1e-27 | 0.0001 |
+| correct only: Instruct-SFT vs DPO | 3.8% | 15.5% | 0.0002 | 0.71 | 1.00 | — | 0.0024 |
+| correct only: Instruct-DPO vs RL final | 15.5% | 5.4% | 2e-6 | 0.025 | 0.0013 | 0.0024 | < 0.00005 |
+
+Cells marked — have no rollouts that long in one cell (Instruct-SFT and
+Tulu answers are short); n/a marks windows with fewer than 10 eligible
+rollouts in a cell, which are not tested.
+
+**Prediction status under the rollout metric.** Prediction 3 (on-policy
+RL raises the rate) remains refuted on the Think and Instruct ladders: RL
+final flags fewer rollouts than DPO overall in both arms (Fisher p = 1e-54
+and 1e-14 for Think, 6e-12 and 0.0003 for Instruct); the windowed tests
+agree wherever they have power (Think, all windows, both arms; Instruct
+untruncated, p = 0.021 / 0.0012 / 0.0002) and are not significant in the
+sparse Instruct recommended-arm windows (p = 1.00 / 0.26 / 0.21). On Tulu
+no RL checkpoint flags more rollouts than its DPO (overall p ≥ 0.5; the
+only window differences, p = 0.04–0.05 at 1,024 tokens, go the other way
+or involve SFT). Prediction 4 (SFT ≈ DPO): refuted on Think (11.8% vs
+55.0%, p = 7e-50); on Instruct the overall difference (3.4% vs 21.0%,
+p = 1e-18) is not seen within the first 256 or 1,024 tokens (p = 1.00 /
+0.49, the latter over 31 SFT rollouts). Prediction 13 (Think-SFT above RL
+final): indistinguishable in every window (p ≥ 0.44). Prediction 14
+(RL-Zero rises with training): 14.6% → 58.4% (p = 8e-49), and within the
+first 256 tokens 1.8% → 43.0%.
+
+Two statuses recorded under the per-token metric change under this one:
+Instruct-SFT vs Instruct-DPO reverses direction (per token SFT was
+higher, permutation p = 0.044; by rollouts DPO flags 6× more, p = 1e-18),
+and Tulu-3-SFT vs Tulu-3-DPO goes from distinguishable (permutation
+p = 0.013) to not (5.2% vs 3.0%, p = 0.11). Everything else keeps its
+status.
+
+What the length windows show, beyond the earlier analysis:
+- **RL-Zero's events come early; Think-DPO's accumulate with length.**
+  Overall the two are level (58.4% vs 55.0%, p = 0.31), but within the
+  first 256 tokens Zero flags 43.0% of rollouts against DPO's 7.4%
+  (p = 6e-41), and by 4,096 tokens they meet (53.2% vs 53.2%). The same
+  crossover appears on AIME (42.5% vs 8.2% at 256; 47.5% vs 54.5% at
+  4,096).
+- **Within a model, DAPO and AIME agree in every window** (p ≥ 0.12)
+  while their overall flag rates differ (p ≤ 0.0045); AIME rollouts are
+  longer. Consistent with the DAPO-vs-AIME difference being length,
+  though the windows do not prove it.
+- **Instruct-DPO vs RL final holds in all three windows** (p = 0.021,
+  0.0012, 0.0002) and in correct rollouts only. Instruct-SFT vs DPO does
+  not (p = 1.00 at 256; p = 0.49 at 1,024 over 31 SFT rollouts), so the
+  windows cannot say whether that gap is anything but length.
+- **Tulu-SFT vs DPO or RLVR is distinguishable only within the first
+  1,024 tokens** (p = 0.004, 0.001), among the 106 SFT rollouts that
+  reached that length, which are the word-salad ones.
+
+*Notes from Claude:* the windowed flag is a fixed-horizon "has the first
+event happened by token L" and is compared only among rollouts that
+reached L, so it conditions on length rather than adjusting for it; a
+cell whose long rollouts are its degenerate ones (Tulu-SFT) will look
+worse in the long windows for that reason, and a cell with few long
+rollouts (Instruct-SFT: 31 past 1,024 tokens, none past 4,096) gives the
+long windows no power, so a null there is not evidence of a length
+effect. The per-token permutation and the Fisher test disagree in sign
+for Instruct-SFT vs DPO (SFT has the higher pooled rate because its few
+events sit in short rollouts, while DPO flags 6× more rollouts); the
+rollout numbers are the ones the amended plan treats as primary. The
+pairwise table holds 37 pairs × up to 4 tests; at that count a few
+p-values near 0.05 are expected by chance, and the Tulu 1,024-token
+entries at p = 0.04–0.05 should be read that way. Windows with fewer
+than 10 eligible rollouts in either cell are shown as n/a rather than
+tested.
+
 ## Reproduction
 
 Every number above comes from these commands, run from a clean checkout
@@ -667,20 +1015,30 @@ optional `:n` samples-per-prompt suffix; `ARMS` is `untruncated` (temperature
 | rlzero-math-step300, DAPO | `... --env MODEL=allenai/Olmo-3-7B-RL-Zero-Math --env REVISION=step_300 --env RUN_NAME=rlzero-math-step300 --env PROMPTS="prompts/dapo_sample500.jsonl"` |
 | think-main-recommended, DAPO | `... --env MODEL=allenai/Olmo-3-7B-Think --env RUN_NAME=think-main-recommended --env ARMS=recommended --env PROMPTS="prompts/dapo_sample500.jsonl"` |
 | think-dpo-recommended, DAPO | `... --env MODEL=allenai/Olmo-3-7B-Think-DPO --env RUN_NAME=think-dpo-recommended --env ARMS=recommended --env PROMPTS="prompts/dapo_sample500.jsonl"` |
+| instruct-sft, instruct-dpo, instruct-main (both arms) | one launch with `JOBS`, given verbatim in "Launched 2026-09-04" above |
+| tulu3-sft, tulu3-dpo, tulu3-rlvr, tulu31-rlvr (both arms) | one launch with `JOBS`, given verbatim in "Launched 2026-09-04" above |
 
 Metrics for a cell (recomputes everything from the stored token IDs; the
 on-box copies uploaded by early runs were produced by earlier versions of
 `metrics.py` and are superseded by rerunning this):
 
 ```
-uv run python -m noncanon.metrics --tokenizer allenai/Olmo-3-7B-Think --revision <revision> --records out/<run>/<prompt set>/*.parquet --out-dir out/<run>/<prompt set>/metrics
+uv run python -m noncanon.metrics --tokenizer <checkpoint> --revision <revision> --records out/<run>/<prompt set>/*.parquet --out-dir out/<run>/<prompt set>/metrics
 ```
 
-(`--revision` matters only for step checkpoints such as `rlzero-math-step300`;
-the tokenizer is identical across the family.)
+(`--revision` matters only for step checkpoints such as `rlzero-math-step300`.
+Within the OLMo-3 family the BPE vocabulary is identical and only the names
+of a few added control tokens differ, all of which are excluded as special,
+so any family member's tokenizer gives the same numbers; the recompute
+script still uses each track's own.)
 
-Comparisons per the analysis specification (rollout-bootstrap CIs, per-token
-z, per-rollout permutation; both conventions):
+Comparisons per the analysis specification. Since 2026-09-04 `noncanon.compare`
+prints the rollout-level numbers first (flag fraction with Wilson interval,
+Fisher exact, fixed-window flags) and the per-token rate second; `--outcome
+correct|parsed|...` restricts both cells; `--table` prints the rollout-level
+row of every run directory given. `scripts/compare_all.sh` runs every pair
+and table in this file; `scripts/recompute_metrics.sh` recomputes every
+cell's metrics from the stored records first:
 
 ```
 uv run python -m noncanon.compare out/think-dpo/dapo_sample500 out/think-main/dapo_sample500
@@ -698,6 +1056,14 @@ uv run python -m noncanon.compare out/rlzero-math/aime_2024_2025 out/think-main/
 uv run python -m noncanon.compare out/think-main/dapo_sample500 out/think-main-recommended/dapo_sample500
 uv run python -m noncanon.compare out/think-dpo-recommended/dapo_sample500 out/think-main-recommended/dapo_sample500
 uv run python -m noncanon.compare out/think-dpo/dapo_sample500 out/think-dpo-recommended/dapo_sample500
+uv run python -m noncanon.compare out/instruct-sft/dapo_sample500 out/instruct-dpo/dapo_sample500 --arm untruncated   # and --arm recommended
+uv run python -m noncanon.compare out/instruct-dpo/dapo_sample500 out/instruct-main/dapo_sample500 --arm untruncated
+uv run python -m noncanon.compare out/instruct-sft/dapo_sample500 out/instruct-main/dapo_sample500 --arm untruncated
+uv run python -m noncanon.compare out/tulu3-sft/dapo_sample500 out/tulu3-dpo/dapo_sample500 --arm untruncated      # and --arm recommended, for each Tulu pair
+uv run python -m noncanon.compare out/tulu3-dpo/dapo_sample500 out/tulu3-rlvr/dapo_sample500 --arm untruncated
+uv run python -m noncanon.compare out/tulu3-sft/dapo_sample500 out/tulu3-rlvr/dapo_sample500 --arm untruncated
+uv run python -m noncanon.compare out/tulu3-rlvr/dapo_sample500 out/tulu31-rlvr/dapo_sample500 --arm untruncated
+uv run python -m noncanon.compare out/tulu3-dpo/dapo_sample500 out/tulu31-rlvr/dapo_sample500 --arm untruncated
 ```
 
 Tail depth, emitted-token ranks and bare-space spans:
@@ -705,7 +1071,13 @@ Tail depth, emitted-token ranks and bare-space spans:
 ```
 uv run python -m noncanon.tail --tokenizer allenai/Olmo-3-7B-Think out/think-main/dapo_sample500 out/think-dpo/dapo_sample500 out/rlzero-math/dapo_sample500 \
     out/think-sft/dapo_sample500 out/rlzero-math-step300/dapo_sample500 out/think-main-recommended/dapo_sample500 out/think-dpo-recommended/dapo_sample500
+uv run python -m noncanon.tail --tokenizer allenai/Llama-3.1-Tulu-3-8B out/tulu3-sft/dapo_sample500 out/tulu3-dpo/dapo_sample500 out/tulu3-rlvr/dapo_sample500 out/tulu31-rlvr/dapo_sample500
 ```
 
 The prompt-set overlap with the OLMo-3 RL training data is computed inside
 `noncanon.prompts dapo` and written to `prompts/dapo_filter_report.json`.
+The Tulu 3 RLVR overlap check (row counts and zero matches) is:
+
+```
+uv run python -m noncanon.prompts overlap prompts/dapo_sample500.jsonl allenai/RLVR-GSM-MATH-IF-Mixed-Constraints allenai/RLVR-MATH
+```

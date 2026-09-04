@@ -98,7 +98,7 @@ rough priority order.
 
 | Family | Checkpoints | What it adds |
 |---|---|---|
-| Tulu-3-8B (Llama-3.1 base) | `Llama-3.1-Tulu-3-8B-SFT`, `-DPO`, `-8B` (RLVR), `Tulu-3.1-8B` (longer RL) | Same recipe and code on a different base and tokenizer (three-digit tokens); two RL doses |
+| Tulu-3-8B (Llama-3.1 base) | `Llama-3.1-Tulu-3-8B-SFT`, `-DPO`, `-8B` (RLVR, PPO), `Tulu-3.1-8B` (the RLVR stage redone with GRPO and retuned; corrected 2026-09-04 from "longer RL") | Same recipe and code on a different base and tokenizer (three-digit tokens); two RL runs from the same DPO checkpoint |
 | Phi-4 (14B) | `Phi-4-reasoning` (SFT on o3-mini traces) → `Phi-4-reasoning-plus` (+ math GRPO) | Most modern SFT→RL pair; short RL dose; training code closed |
 | OLMo-2-32B | `OLMo-2-0325-32B-SFT`, `-DPO`, `-Instruct` | Older full ladder at 32B |
 | Qwen2.5-32B base family | `DeepSeek-R1-Distill-Qwen-32B` (SFT-only CoT) vs `Open-Reasoner-Zero-32B` / `DAPO-Qwen-32B` (RL-only CoT), plus the base | Same base, SFT-only vs RL-only reasoning; the zero models have weak general compliance |
@@ -494,6 +494,33 @@ the DPO model "does display lower entropy" than SFT while having higher
 pass@K on AIME, which matches the measured top-10 entropies here (SFT
 0.615, DPO 0.338). Table 49 (per-run learning rate, batch, steps) is not
 text-extractable from the HTML; check the PDF if the exact dose matters.
+
+## Primary metric changed to rollouts (Brendan, 2026-09-04)
+
+The preregistered per-token rate is demoted. Tokens within a rollout are
+not independent (events cluster: a model that starts a non-canonical
+habit in a rollout keeps it up), so per-token p-values from pooled counts
+do not mean what they claim, and the per-token rate is unfortunately not
+a good primary metric despite being the one originally chosen. From here
+the primary numbers are:
+
+1. **Fraction of rollouts with at least one non-canonical event**, with a
+   Wilson 95% interval, compared between cells with Fisher's exact test.
+2. **A length-controlled version:** the same flag restricted to the first
+   L tokens (L = 256, 1024, 4096), over the rollouts that reached L
+   tokens, so that a checkpoint that writes longer answers does not get
+   more chances to be flagged.
+3. The per-token rate stays in every table because it is what the plan
+   said would be reported, but it is now secondary, and its per-token
+   z-test p-values are not to be used for conclusions. The per-rollout
+   permutation test on the difference of pooled rates remains valid
+   (rollouts are its unit) and is kept alongside.
+
+Outcome-restricted versions (correct rollouts only; parsed only) are
+reported where the bucket has enough events, because "accuracy" in the
+weak families (Tulu on DAPO) mostly measures which problems are easy.
+Every pairwise comparison already made is re-reported under the new
+metric in RESULTS.md, with the same pairs and no new ones.
 
 ## Follow-ups under consideration
 
