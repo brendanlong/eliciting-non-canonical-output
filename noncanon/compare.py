@@ -13,7 +13,7 @@ pair of run directories (each holding ``metrics/analysis.jsonl``), in order:
 2. The same flag restricted to the first L tokens, over rollouts that
    reached L tokens (``SEQ_LENGTHS``), which conditions on length; a
    window with fewer than ``MIN_ELIGIBLE`` such rollouts in either cell
-   is reported as n/a.
+   is marked † (the p-value is exact but uninformative).
 3. The pooled per-token rate with a rollout-bootstrap 95% CI, a per-token
    z on pooled counts (conditional-binomial form; ignores clustering) and a
    per-rollout permutation test on the difference of pooled rates; under
@@ -146,7 +146,7 @@ def print_table(runs: list[Path], arm: str | None, outcome_filter: str) -> None:
         cells = []
         for L in SEQ_LENGTHS:
             kL, nL = flags(rows, L)
-            cells.append(f"{kL}/{nL} = {100 * kL / nL:.1f}%" if nL >= MIN_ELIGIBLE else (f"{kL}/{nL} (too few)" if nL else "—"))
+            cells.append(f"{kL}/{nL} = {100 * kL / nL:.1f}%" + ("" if nL >= MIN_ELIGIBLE else " †") if nL else "—")
         rate = sum(r["nc_events"] for r in rows) / max(1, sum(r["n_units"] for r in rows))
         frac = f"{k} ({100 * k / n:.1f}%)" if n else "0 (n/a)"
         print(f"| {run} | {n} | {frac} | {100 * lo:.1f}–{100 * hi:.1f}% | " + " | ".join(cells) + f" | {100 * rate:.4f}% |")
@@ -177,10 +177,12 @@ def main() -> None:
     for L in SEQ_LENGTHS:
         (k1, n1), (k2, n2) = flags(ra, L), flags(rb, L)
         counts = f"{k1}/{n1} = {pct(k1, n1)} vs {k2}/{n2} = {pct(k2, n2)}"
-        if min(n1, n2) >= MIN_ELIGIBLE:
+        if not (n1 and n2):
+            print(f"  within the first {L} tokens: {counts} | no eligible rollouts in a cell")
+        elif min(n1, n2) >= MIN_ELIGIBLE:
             print(f"  within the first {L} tokens: {counts} | Fisher exact p = {fisher_exact(k1, n1, k2, n2):.2e}")
         else:
-            print(f"  within the first {L} tokens: {counts} | n/a (fewer than {MIN_ELIGIBLE} eligible rollouts in a cell)")
+            print(f"  within the first {L} tokens: {counts} | Fisher exact p = {fisher_exact(k1, n1, k2, n2):.2e} † (fewer than {MIN_ELIGIBLE} eligible rollouts in a cell; exact but uninformative)")
     A, B_ = load(a, args.arm, args.outcome), load(b, args.arm, args.outcome)
     for conv in CONVENTIONS:
         print(f"== per-token rate, {conv} (secondary) ==")
