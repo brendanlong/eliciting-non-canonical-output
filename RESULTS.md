@@ -322,6 +322,95 @@ headline +0.0035 pp, per-token z = 3.0 (p = 0.002), per-rollout
 permutation p = 0.41; segmentation only +0.0036 pp, z = 3.1 (p = 0.002),
 per-rollout p = 0.38. The Think and DPO AIME cells are still running.
 
+### AIME 2024/2025, Think-DPO
+
+480 rollouts: 434 stop, 46 length; think closed 433 / 480; accuracy
+(finished, parsed) 80.7%; excluded 165 tokens incomplete UTF-8, 166 cut
+last word. Length: mean 17,384, median 14,779, p90 32,539, max 32,767.
+Headline rate **0.0177%** (1,474 of 8,344,375 units; 757 spans, 157
+fragments of which 156 standalone; 330 / 480 rollouts with ≥1 event; shapes
+whitespace 301 / alphabetic 222 / symbolic 234); segmentation only 0.0158%
+(1,318 / 8,344,219). Think 1,422 / 7,961,992 (0.0179%), answer 52 / 382,429
+(0.0136%). Entropy 0.393 all positions, 0.967 at non-canonical positions.
+Rollout-bootstrap 95% CI (headline) 0.0158–0.0198%.
+
+Within-model AIME − DAPO for DPO: headline −0.0010 pp, per-token z = 1.2
+(p = 0.24), per-rollout p = 0.55; segmentation only −0.0002 pp, z = 0.3
+(p = 0.78), per-rollout p = 0.88.
+
+AIME, RL-Zero-Math − Think-DPO: headline +0.0096 pp, per-token z = 11.9
+(p < 1e-15), per-rollout p < 0.0002; segmentation only +0.0115 pp,
+z = 14.6, per-rollout p < 0.0002. (The AIME Think cell is still running.)
+
+### Next-token distribution sharpness, DAPO 500 (from the stored top-10 logprobs)
+
+Computed over every generated position; p_top1 is the raw probability of
+the model's most likely token, entropy is over the top-10 renormalized.
+
+| checkpoint | positions | mean p_top1 | frac p_top1 < 0.5 | frac p_top1 < 0.9 | mean mass outside top-1 | mean entropy | entropy p90 | frac entropy > 1 |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|
+| Think RL final | 4,649,943 | 0.858 | 8.8% | 36.9% | 0.142 | 0.379 | 1.16 | 13.9% |
+| Think-DPO | 4,092,746 | 0.874 | 7.9% | 32.6% | 0.126 | 0.338 | 1.10 | 12.2% |
+| RL-Zero-Math | 3,133,206 | 0.864 | 8.8% | 34.8% | 0.136 | 0.368 | 1.18 | 14.2% |
+
+(Think RL final has the highest average entropy and tail mass of the three
+and the lowest non-canonical rate; DPO the lowest entropy and the middle
+rate.)
+
+**Tail depth and where spans start.** Mass beyond the top-10 (the deep
+tail; raw logprobs are a full softmax so the top-10 sum is exact) and the
+rank of the emitted token, overall and at the first token of each
+non-canonical span (byte fragments excluded):
+
+| checkpoint | mass beyond top-10, all positions | at span-first positions | positions sampled beyond top-10 | span-first token at rank 1 / 2–3 / 4–10 / >10 | spans per 1M samples at rank 1 / 2–3 / 4–10 / >10 |
+|---|--:|--:|--:|---|---|
+| Think RL final | 0.0024 | 0.0109 | 0.22% | 79.6 / 12.0 / 5.6 / 2.8% | 21 / 25 / 58 / 288 |
+| Think-DPO | 0.0050 | 0.0347 | 0.49% | 76.4 / 10.2 / 4.2 / 9.2% | 86 / 103 / 208 / 1,848 |
+| RL-Zero-Math | 0.0031 | 0.0186 | 0.31% | 78.6 / 15.3 / 3.7 / 2.4% | 157 / 249 / 264 / 1,358 |
+
+Share of all sampled tokens at rank 1 is 86–88% for all three. Under
+temperature 1 sampling, about three quarters of spans begin with the
+model's argmax token in every checkpoint.
+
+**Refinement: spans that begin with a bare space token.** In this
+tokenizer a standalone space token is canonical only before a digit
+(digits are pre-tokenized separately), so a bare space followed by a
+non-digit is a span whose first token is innocuous and whose second token
+is the deviation. DPO has 231 such spans (of 403); the token after the
+space is at rank >10 in 81% of them (rank 1 in 3%); the most common
+followers are a partial multi-byte character (18), `.` (16), `**` (7). Its
+other 172 spans start at rank 1 in 54% and rank >10 in 22%. Think RL
+final has 1 bare-space span and 107 others (80% rank 1, 3% rank >10);
+RL-Zero-Math has 2 and 541 others (79% rank 1, 2% rank >10).
+
+**Random examples** (context … emitted → canonical; p = probability of
+the first emitted token; for tail cases, the model's top choice):
+
+Think RL final, argmax-start: `The image link is to a cdn` `' art'`,`'of'` → `' ar'`,`'to'`,`'f'` (p 0.29); `factor the left-hand side` `'.'`,`'Rew'` → `'.R'`,`'ew'` (1.00); `r)(-s) = - (` `'t'`,`'rs'` → `'trs'` (0.68); `But W` `'_g'`,`'b'` → `'_gb'` (1.00); `based on案` `'例'`,`'如'` → `'例如'` (0.98). Tail-start: `or else the set` `' is'`,`'nt'` → `' isnt'` (rank 2, p 0.29; top `' isn'` 0.69); `which` `' simpl'`,`'ates'` → `' sim'`,`'plates'` (rank 2; top `' gives'` 0.73); `starts with 2.` `'abc'`,`'def'` → `'abcdef'` (rank 5, p 0.02; top `' followed'` 0.47).
+
+Think-DPO, argmax-start (all bare-space): `15m + b =` `' '`,`'lic'` → `' lic'` (p 1.00); `is at most` `' '`,`'Counter'` → `' Counter'` (1.00); `legs of length 3 and` `' '`,`'.'` → `' .'` (1.00); `6k+2,` `' '`,`'-P'`,`'Finding'` → `' -'`,`'PF'`,`'inding'` (1.00). Tail-start: `counter BAL` `'ANC'`,`'Ed'` → `'ANCE'`,`'d'` (rank 4, p 0.001; top `'ANCED'` 0.98); `t_n = 1 +` `' Chronic'`,`'hidden'` → `' Chron'`,`'ich'`,`'idden'` (rank 11; top `'2'` 0.97); `So that cross` `'-bot'`,`'ton'` → `'-b'`,`'otton'` (rank 11; top `'-check'` 0.91).
+
+RL-Zero-Math, argmax-start: `tag, in` `' $'`,`'($'` → `' $($'` (p 1.00, ×213); `which is original` `' term'`,`'m'` → `' ter'`,`'mm'` (0.99); `answer ask` `' for'`,`'k'` → `' fork'` (0.37); `We need to` `' compute'`,`'x'` → `' comput'`,`'ex'` (0.50). Tail-start: `Expand the second term:` `'(b'`,`'ig'` → `'(big'` (rank 2; top `'Multiply'` 0.54); `Alternatively,` `' plot'`,`'ting'` → `' plotting'` (rank 3, p 0.17; top `' plotting'` 0.31); `Total P` `'+'`,`'E'` → `'+E'` (rank 2; top `'+E'` 0.69). For orientation against the
+recommended-settings pilot (Think RL final, temperature 0.6 / top-p 0.95,
+50 prompts): 21 rank-1 spans per million samples would predict about 9
+spans in its 468k tokens if rank-1 events were independent of the
+sampling regime; it observed 0.
+
+### Launched 2026-09-03: Think RL final at recommended settings, DAPO 500 only
+
+Per plan prediction 15.
+
+```
+sky launch -c nc-think-rec skypilot/run.yaml --gpus B200:1 --retry-until-up -i 20 --down -y -d --env HF_TOKEN \
+    --env MODEL=allenai/Olmo-3-7B-Think --env RUN_NAME=think-main-recommended --env ARMS=recommended \
+    --env PROMPTS="prompts/dapo_sample500.jsonl"
+```
+
+### Launched 2026-09-03: Think-DPO at recommended settings, DAPO 500 only
+
+Per plan prediction 16. Same command as the Think recommended run with
+`MODEL=allenai/Olmo-3-7B-Think-DPO`, `RUN_NAME=think-dpo-recommended`.
+
 ### Launched 2026-09-03: Think-SFT and RL-Zero-Math step_300, DAPO 500 only
 
 Per plan predictions 13 and 14. Same task and settings; DAPO only.
