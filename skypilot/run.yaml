@@ -18,8 +18,8 @@
 # The records exist only on this box until they are on the Hub, and with
 # `-i 20 --down` the cluster is torn down 20 minutes after the job ends,
 # whether it succeeded or failed. So every generation is uploaded as soon as
-# it finishes, and an upload that fails is retried every 5 minutes for up to
-# 6 hours: a job that is still running keeps the cluster from going idle.
+# it finishes, and a failed upload fails the job so the loss is visible
+# (`sky status` shows FAILED) rather than a green run with missing data.
 
 resources:
   infra: runpod
@@ -54,13 +54,7 @@ run: |
   nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
   uv run python -m noncanon.gpu_check || exit 1
   [ -n "$JOBS" ] || JOBS="$MODEL:$REVISION:$RUN_NAME"
-  upload() {  # retry for up to 6 h; the running job keeps the cluster from autostopping meanwhile
-    for attempt in $(seq 1 72); do
-      uv run python -m noncanon.upload "out/$1" "$1" --repo "$HF_DATASET" && return 0
-      echo ">>> upload of $1 failed (attempt $attempt); retrying in 5 minutes"; sleep 300
-    done
-    echo ">>> upload of $1 failed for 6 hours; giving up"; exit 1
-  }
+  upload() { uv run python -m noncanon.upload "out/$1" "$1" --repo "$HF_DATASET" || { echo ">>> upload of $1 failed"; exit 1; }; }
   for job in $JOBS; do
     IFS=: read -r MODEL REVISION RUN_NAME <<< "$job"
     [ -n "$MODEL" ] && [ -n "$REVISION" ] && [ -n "$RUN_NAME" ] || { echo ">>> bad JOBS entry '$job' (want model:revision:run_name)"; exit 1; }
