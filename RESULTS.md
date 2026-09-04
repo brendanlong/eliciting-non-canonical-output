@@ -633,6 +633,27 @@ beyond the top-10, entropy 0.615) and has the lowest tail-start span rate,
 so a flatter tail alone does not produce spans; DPO's tail samples are
 non-canonical 11× more often than SFT's.
 
+### Launched 2026-09-04: OLMo-3 Instruct and Tulu-3 ladders, DAPO 500, both arms
+
+One box per family, checkpoints queued with `JOBS`; both arms
+(`recommended` = each checkpoint's own `generation_config.json`: OLMo-3
+0.6 / 0.95, Tulu-3 0.6 / 0.9; `untruncated` = 1.0 / 1.0).
+
+```
+sky launch -c nc-instruct skypilot/run.yaml --retry-until-up -i 20 --down -y -d --env HF_TOKEN \
+    --env ARMS=recommended,untruncated --env PROMPTS="prompts/dapo_sample500.jsonl" \
+    --env JOBS="allenai/Olmo-3-7B-Instruct-SFT:main:instruct-sft allenai/Olmo-3-7B-Instruct-DPO:main:instruct-dpo allenai/Olmo-3-7B-Instruct:main:instruct-main"
+sky launch -c nc-tulu skypilot/run.yaml --retry-until-up -i 20 --down -y -d --env HF_TOKEN \
+    --env ARMS=recommended,untruncated --env PROMPTS="prompts/dapo_sample500.jsonl" \
+    --env JOBS="allenai/Llama-3.1-Tulu-3-8B-SFT:main:tulu3-sft allenai/Llama-3.1-Tulu-3-8B-DPO:main:tulu3-dpo allenai/Llama-3.1-Tulu-3-8B:main:tulu3-rlvr allenai/Llama-3.1-Tulu-3.1-8B:main:tulu31-rlvr"
+```
+
+Prompt overlap for Tulu: none of the 500 DAPO prompts matches a prompt in
+Tulu 3's public RLVR sets (`allenai/RLVR-GSM-MATH-IF-Mixed-Constraints`,
+29,946 rows; `allenai/RLVR-MATH`, 7,500 rows), by the same normalized
+exact/prefix rule used for the OLMo-3 filter. Tulu's SFT mixture was not
+checked. The Instruct ladder shares the OLMo-3 filter already applied.
+
 ## Reproduction
 
 Every number above comes from these commands, run from a clean checkout
