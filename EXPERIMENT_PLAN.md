@@ -435,6 +435,14 @@ lower temperature or truncation.
 15. **Think RL final at the recommended settings (temperature 0.6,
     top-p 0.95) on DAPO 500**, chosen because it is the lowest-rate and
     most frontier-like checkpoint: does the rate hit exactly 0?
+16. **Think-DPO at the recommended settings on DAPO 500** (added after
+    the tail analysis showed DPO's dominant pattern is a bare space
+    followed by a deep-tail token, while most Think RL final spans start
+    at the argmax). The recommended settings may distinguish the
+    "non-canonical tokens are the model being less trained" hypothesis:
+    truncation removes DPO's tail-driven spans but not argmax spans, so a
+    reversal, Think RL final above DPO under the recommended settings,
+    is possible.
 
 ## Follow-ups under consideration
 

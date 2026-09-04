@@ -406,6 +406,11 @@ sky launch -c nc-think-rec skypilot/run.yaml --gpus B200:1 --retry-until-up -i 2
     --env PROMPTS="prompts/dapo_sample500.jsonl"
 ```
 
+### Launched 2026-09-03: Think-DPO at recommended settings, DAPO 500 only
+
+Per plan prediction 16. Same command as the Think recommended run with
+`MODEL=allenai/Olmo-3-7B-Think-DPO`, `RUN_NAME=think-dpo-recommended`.
+
 ### Launched 2026-09-03: Think-SFT and RL-Zero-Math step_300, DAPO 500 only
 
 Per plan predictions 13 and 14. Same task and settings; DAPO only.
