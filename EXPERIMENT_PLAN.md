@@ -525,6 +525,9 @@ metric in RESULTS.md, with the same pairs and no new ones.
 ## Follow-ups under consideration
 
 - **Downstream divergence at non-canonical spans** (added 2026-09-03).
+  *Done 2026-09-04 (Brendan's follow-up questions, answered in RESULTS.md
+  "Follow-ups after the main result"): event clustering within rollouts,
+  and the teacher-forced divergence of emitted vs re-tokenized context.*
   At each collected span, teacher-force the emitted prefix and the
   canonical re-encoding of the same text and compare the next-token
   distributions downstream, per checkpoint (DPO vs RL final). This is the
