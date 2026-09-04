@@ -432,6 +432,35 @@ RL-Zero-Math cells above are step 2000, and step_300 is the same run at
 Compliance and accuracy of step_300 are to be checked before its rate is
 compared.
 
+### DAPO 500, RL-Zero-Math step_300 (prediction 14)
+
+`allenai/Olmo-3-7B-RL-Zero-Math` @ `step_300` (the same run as the
+step-2000 `main` checkpoint, 15% of the way through). 500 rollouts, all
+stop; accuracy (finished, parsed) 87.4% (step 2000: 89.6%); no excluded
+tokens. Length: mean 6,348, median 5,154, p90 11,991, max 24,304.
+
+| checkpoint | units | non-canonical | rate | rollouts with ≥1 event | spans | span shapes (whitespace / alphabetic / symbolic) |
+|---|--:|--:|--:|--:|--:|---|
+| step_300 | 3,173,716 | 270 | 0.0085% | 73 / 500 | 166 | 9 / 106 / 51 |
+| step 2000 (`main`) | 3,132,357 | 745 | 0.0238% | 292 / 500 | 543 | 4 / 176 / 363 |
+
+Rollout-bootstrap 95% CI for step_300: 0.0043–0.0161%. step 2000 − step
+300 = +0.0153 pp; per-token z = 15.1 (p < 1e-15); per-rollout permutation
+p < 0.0002 (identical under segmentation only: no fragments at step 300).
+Entropy (top-10): 0.411 all positions, 0.883 at non-canonical positions.
+
+Span patterns at step_300: word-plus-variable joins dominate (`' where'`,`'x'`
+×10; `' per'`,`'k'` ×7; `' to'`,`'x'` ×6; `' above'`,`'x'` ×6; `' since'`,`'x'`
+×5; `' to'`,`'u'` ×5); the `' $'`,`'($'` pattern that accounts for 213 of step
+2000's 543 spans does not occur at step_300 (0); all-digit spans 3 (step
+2000: 68). One rollout carries 50 spans; the next densest 8.
+
+**Prediction status.** Prediction 14 (direction to be observed): within
+the RL-Zero-Math run the rate rises from step 300 to step 2000, by about
+3× per token and from 15% to 58% of rollouts, at every reported p. This is
+the opposite direction from the Think track, where the RL final checkpoint
+sits below its DPO starting point.
+
 ## Reproduction
 
 Every number above comes from these commands, run from a clean checkout
@@ -480,6 +509,7 @@ uv run python -m noncanon.compare out/rlzero-math/dapo_sample500 out/think-main/
 uv run python -m noncanon.compare out/rlzero-math/dapo_sample500 out/rlzero-math/aime_2024_2025   # within-model
 uv run python -m noncanon.compare out/think-dpo/dapo_sample500 out/think-dpo/aime_2024_2025
 uv run python -m noncanon.compare out/think-dpo/aime_2024_2025 out/rlzero-math/aime_2024_2025
+uv run python -m noncanon.compare out/rlzero-math-step300/dapo_sample500 out/rlzero-math/dapo_sample500
 ```
 
 Tail depth, emitted-token ranks and bare-space spans:
