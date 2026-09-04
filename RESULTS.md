@@ -1245,7 +1245,8 @@ consecutive events with different span text separates the two stories:
 in RL-Zero step 2000 and Think RL final the clustering disappears (41%
 and 84% of consecutive events repeat the same text; different-text gaps
 1,140 vs 1,114 shuffled, p = 0.58, and 2,562 vs 3,078, p = 0.33), while in
-Think-DPO it stays (1,019 vs 1,725, p < 0.0005; only 18% repeats) and in
+Think-DPO it stays (1,019 vs 1,725, p < 0.0005; 18% repeats, of which 41
+of 43 are repeated byte-fragment events rather than spans) and in
 Tulu-3-SFT too (47 vs 111, p < 0.0005; 2.5% repeats).
 
 *Notes from Claude:* Tulu-3-SFT's excess of multi-event rollouts is its
