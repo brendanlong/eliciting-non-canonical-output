@@ -28,7 +28,7 @@ from statistics import fmean
 
 from scipy.stats import chi2_contingency
 
-from noncanon.compare import MIN_ELIGIBLE, fisher_exact, flags, load_rows, wilson
+from noncanon.compare import MIN_ELIGIBLE, fisher_exact, flags, fmt_p, load_rows, wilson
 from noncanon.metrics import outcome
 
 SPARSE = "†"
@@ -66,10 +66,6 @@ def frac(k: int, n: int, ci: bool = True) -> str:
     lo, hi = wilson(k, n)
     mark = SPARSE if n < MIN_ELIGIBLE else ""
     return f"{100 * k / n:.1f}% ({k}/{n}){mark}" + (f" [{100 * lo:.1f}–{100 * hi:.1f}]" if ci else "")
-
-
-def fmt_p(p: float) -> str:
-    return "< 1e-10" if p < 1e-10 else (f"{p:.1e}" if p < 0.001 else f"{p:.3f}")
 
 
 def p_str(a: tuple[int, int], b: tuple[int, int]) -> str:

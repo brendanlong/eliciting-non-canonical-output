@@ -141,7 +141,9 @@ def token_test(a, b) -> tuple[float, float]:
 # --- tables (the generated blocks in RESULTS.md) -------------------------------------
 def parse_spec(spec: str, default_arm: str | None) -> tuple[str, Path, str | None]:
     """``[label=]run_dir[:arm]`` → (label, run_dir, arm); the label defaults to the run_dir."""
-    label, _, cell = spec.rpartition("=")
+    label, sep, cell = spec.partition("=")
+    if not sep:
+        label, cell = "", label
     run, _, arm = cell.partition(":")
     return label or run, Path(run), arm or default_arm
 
@@ -167,7 +169,7 @@ def print_table(specs: list[str], arm: str | None, outcome_filter: str) -> None:
         print(f"| {label} | {n} | {frac} | {100 * lo:.1f}–{100 * hi:.1f}% | " + " | ".join(cells) + f" | {100 * rate:.4f}% |")
 
 
-def print_pairs(specs: list[str], arm: str | None, seed: int) -> None:
+def print_pairs(specs: list[str], arm: str | None, seed: int, default_outcome: str = "all") -> None:
     """One row per ``"A vs B=run_a[:arm],run_b[:arm][;outcome]"`` (an optional ``prefix: `` before ``A vs B`` is kept in the label).
 
     Columns: flagged fraction of each cell; Fisher exact p overall and within
@@ -182,12 +184,15 @@ def print_pairs(specs: list[str], arm: str | None, seed: int) -> None:
     for spec in specs:
         label, _, rest = spec.partition("=")
         cells, _, outcome_filter = rest.partition(";")
-        outcome_filter = outcome_filter or "all"
+        outcome_filter = outcome_filter or default_outcome
         names = label.rsplit(": ", 1)[-1].split(" vs ")
         assert len(names) == 2, f"label must read 'A vs B': {label}"
         (_, run_a, arm_a), (_, run_b, arm_b) = (parse_spec(c, arm) for c in cells.split(","))
         ra, rb = load_rows(run_a, arm_a, outcome_filter), load_rows(run_b, arm_b, outcome_filter)
         (k1, n1), (k2, n2) = flags(ra), flags(rb)
+        if not (n1 and n2):
+            print(f"| {label} | — | — | no rollouts in this outcome bucket for one cell |" + " — |" * (len(SEQ_LENGTHS) + 1))
+            continue
         p_all = fisher_exact(k1, n1, k2, n2)
         higher_all = k2 / n2 > k1 / n1
         out = [f"{100 * k1 / n1:.1f}%", f"{100 * k2 / n2:.1f}%", fmt_p(p_all)]
@@ -228,7 +233,7 @@ def main() -> None:
         print_table(args.runs, args.arm, args.outcome)
         return
     if args.pairs:
-        print_pairs(args.runs, args.arm, args.seed)
+        print_pairs(args.runs, args.arm, args.seed, args.outcome)
         return
     assert len(args.runs) == 2, "pass exactly two run directories (or --table / --pairs)"
     a, b = map(Path, args.runs)
