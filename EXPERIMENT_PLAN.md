@@ -464,6 +464,20 @@ DPO, while within the Zero run the rate rises 3× from step 300 to step
   on-policy RL (Zero step 300 → 2000; Think SFT → RL final), while the
   tail-start span rate should track DPO.
 
+Added after the recommended-settings cells (Brendan, 2026-09-04): the
+cross-model validation (Instruct, Tulu) is the check on whether this is
+training noise, but the points so far look real, with *something* weird
+about DPO specifically. A candidate explanation for Zero rising under RL
+while Think RL falls: the model's confidence at the start of RL. Zero
+starts high-entropy, so RL amplifies non-canonical tokens when they
+happen to be useful and converges to low entropy over a mix of canonical
+and non-canonical habits; Think starts from a low-entropy DPO checkpoint,
+so RL makes it more confident in whatever it already does and it rarely
+samples non-canonical tokens in the first place, converging canonical.
+Not obviously distinguishable with the current data. An alternative is a
+recipe difference: an entropy bonus or other setting that makes the Zero
+run sample more widely than the Think RL stage.
+
 ## Follow-ups under consideration
 
 - **Downstream divergence at non-canonical spans** (added 2026-09-03).
