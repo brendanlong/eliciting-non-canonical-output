@@ -26,10 +26,10 @@ from __future__ import annotations
 import argparse
 import json
 from collections import defaultdict
-from math import exp
 from pathlib import Path
 
 import numpy as np
+from scipy.stats import poisson
 
 from noncanon.compare import load_rows, parse_spec
 
@@ -43,10 +43,8 @@ def poisson_multi(rows: list[dict]) -> tuple[int, int, float]:
     unit as the gaps, not as canonical tokens inside spans."""
     rate = sum(len(r["event_positions"]) for r in rows) / sum(r["n_units"] for r in rows)
     flagged = [r for r in rows if r["event_positions"]]
-    expected = 0.0
-    for r in flagged:
-        lam = rate * r["n_units"]
-        expected += 1 - lam * exp(-lam) / (1 - exp(-lam)) if lam > 0 else 0.0
+    lam = np.array([rate * r["n_units"] for r in flagged])
+    expected = float((poisson.sf(1, lam) / poisson.sf(0, lam)).sum())  # P(N ≥ 2 | N ≥ 1) per rollout
     return len(flagged), sum(len(r["event_positions"]) >= 2 for r in flagged), expected
 
 
