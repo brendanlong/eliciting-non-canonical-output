@@ -334,7 +334,10 @@ sky launch -c nc-zero300 skypilot/run.yaml --gpus B200:1 --retry-until-up -i 20 
     --env PROMPTS="prompts/dapo_sample500.jsonl"
 ```
 
-RL-Zero-Math step branches on the Hub run `step_100` to `step_1900` (the
-plan's earlier count of 19 undercounted; `main` is the final checkpoint).
+RL-Zero-Math step branches on the Hub run `step_100` to `step_1900`, and
+`main` is the commit "Upload checkpoint from step 2000" (same run; the
+later commits on `main` touch only the README and config). So the
+RL-Zero-Math cells above are step 2000, and step_300 is the same run at
+15% of its length.
 Compliance and accuracy of step_300 are to be checked before its rate is
 compared.
