@@ -1179,6 +1179,18 @@ entries at p = 0.04–0.05 should be read that way. Windows with fewer
 than 10 eligible rollouts in either cell are marked † and their counts
 shown; those p-values are exact but carry no information.
 
+### Launched 2026-09-04: RL-Zero-Math at steps 600, 1,000, 1,400, 1,800, DAPO 500, temperature 1
+
+Brendan's aim: a table of length-matched flagged-rollout rates across the
+RL-Zero training run (with steps 300 and 2,000 already measured). Four
+intermediate checkpoints on two B200 boxes, two per box:
+
+```
+M=allenai/Olmo-3-7B-RL-Zero-Math
+sky launch -c nc-zero-a skypilot/run.yaml --gpus B200:1 --retry-until-up -i 20 --down -y -d --env HF_TOKEN --env ARMS=untruncated --env PROMPTS="prompts/dapo_sample500.jsonl" --env JOBS="$M:step_600:rlzero-math-step600 $M:step_1000:rlzero-math-step1000"
+sky launch -c nc-zero-b skypilot/run.yaml --gpus B200:1 --retry-until-up -i 20 --down -y -d --env HF_TOKEN --env ARMS=untruncated --env PROMPTS="prompts/dapo_sample500.jsonl" --env JOBS="$M:step_1400:rlzero-math-step1400 $M:step_1800:rlzero-math-step1800"
+```
+
 ## Follow-ups after the main result (2026-09-04)
 
 Two questions Brendan asked once the training-stage comparison was in:
