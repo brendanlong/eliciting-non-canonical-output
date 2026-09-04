@@ -29,7 +29,7 @@ noncanon/
   gpu_check.py   fail fast if CUDA is not usable on the host
   tests/         CPU tests on the real OLMo-3 tokenizer
 prompts/         generated prompt files and the DAPO filter report (committed)
-scripts/         recompute every cell's metrics; run every comparison in RESULTS.md
+scripts/         recompute every cell's metrics; run every comparison; check_results.py verifies the generated tables in RESULTS.md
 skypilot/        RunPod task definitions
 ```
 
