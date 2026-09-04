@@ -579,6 +579,32 @@ tokens. All cells were recomputed; only unit and excluded-token counts
 changed (this cell's units 4,448,296 → 4,477,830), no rate, CI or p at the
 reported precision.
 
+### DAPO 500, Think-DPO at the recommended settings (prediction 16)
+
+`allenai/Olmo-3-7B-Think-DPO` @ `main`, temperature 0.6 / top-p 0.95. 500
+rollouts: 498 stop, 2 length; think closed 493 / 500; accuracy (finished,
+parsed) 98.6%; excluded 12 tokens incomplete UTF-8, 16 cut last word.
+Length: mean 7,775, median 6,378, p90 13,811, max 32,760.
+
+| DAPO 500, recommended settings | units | non-canonical | rate | 95% CI | spans | fragments | rollouts with ≥1 event | shapes (ws / alpha / sym) |
+|---|--:|--:|--:|---|--:|--:|--:|---|
+| Think-DPO | 3,887,498 | 126 | **0.0032%** | 0.0025–0.0040% | 98 | 10 | 76 / 500 | 73 / 9 / 16 |
+| Think RL final | 4,477,830 | 34 | **0.0008%** | 0.0003–0.0013% | 17 | 0 | 10 / 500 | 0 / 11 / 6 |
+
+DPO − RL final at the recommended settings: −0.0025 pp for RL, per-token
+z = 8.2 (p = 3e-16), per-rollout permutation p < 0.00005 (segmentation
+only: −0.0023 pp, z = 7.6, p < 0.00005). DPO recommended − DPO
+untruncated: −0.0154 pp, z = 20.6, per-rollout p < 0.00005. Think 125 /
+3,605,100 (0.0035%), answer 1 / 282,472. Entropy 0.256 all positions,
+0.973 at non-canonical positions. Spans: 73 of 98 begin with a bare space;
+the token after the space is now at rank 1 in 42%, rank 2–3 in 38%, beyond
+the top-10 in 7% (untruncated: 3% / 9% / 81%). 92% of all spans begin at
+the argmax token.
+
+**Prediction status.** Prediction 16 (a reversal under the recommended
+settings, Think RL final above DPO): **refuted** — DPO stays about 4× above
+RL final. Truncation removed 83% of DPO's events and 79% of RL final's.
+
 ### Where spans start, all cells so far (from `noncanon.tail`)
 
 Spans per million sampled tokens whose first token was the model's argmax
@@ -593,6 +619,7 @@ token); the figure excluding them is in brackets.
 | Think-DPO | 403 | 85.7 (25.9) | 1,847.5 | 0.5% | 0.0050 | 0.338 |
 | Think RL final | 108 | 21.4 | 288.0 | 0.2% | 0.0024 | 0.379 |
 | Think RL final, recommended | 17 | 3.3 | — (never sampled) | 0.0% | 0.0012 | 0.314 |
+| Think-DPO, recommended | 98 | 24.5 (5.2) | — (never sampled) | 0.0% | 0.0016 | 0.256 |
 | RL-Zero-Math step 300 | 166 | 31.1 | 856.8 | 0.5% | 0.0048 | 0.433 |
 | RL-Zero-Math step 2000 | 543 | 157.3 | 1,358.1 | 0.3% | 0.0031 | 0.368 |
 
@@ -669,13 +696,15 @@ uv run python -m noncanon.compare out/think-main/dapo_sample500 out/think-main/a
 uv run python -m noncanon.compare out/think-dpo/aime_2024_2025 out/think-main/aime_2024_2025
 uv run python -m noncanon.compare out/rlzero-math/aime_2024_2025 out/think-main/aime_2024_2025
 uv run python -m noncanon.compare out/think-main/dapo_sample500 out/think-main-recommended/dapo_sample500
+uv run python -m noncanon.compare out/think-dpo-recommended/dapo_sample500 out/think-main-recommended/dapo_sample500
+uv run python -m noncanon.compare out/think-dpo/dapo_sample500 out/think-dpo-recommended/dapo_sample500
 ```
 
 Tail depth, emitted-token ranks and bare-space spans:
 
 ```
 uv run python -m noncanon.tail --tokenizer allenai/Olmo-3-7B-Think out/think-main/dapo_sample500 out/think-dpo/dapo_sample500 out/rlzero-math/dapo_sample500 \
-    out/think-sft/dapo_sample500 out/rlzero-math-step300/dapo_sample500 out/think-main-recommended/dapo_sample500
+    out/think-sft/dapo_sample500 out/rlzero-math-step300/dapo_sample500 out/think-main-recommended/dapo_sample500 out/think-dpo-recommended/dapo_sample500
 ```
 
 The prompt-set overlap with the OLMo-3 RL training data is computed inside
