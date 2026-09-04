@@ -317,5 +317,7 @@ p90 16,924, max 32,766. Headline rate **0.0273%** (1,470 of 5,389,285
 units; 939 spans, 1 fragment; 323 / 480 rollouts with ≥1 event; shapes
 whitespace 30 / alphabetic 431 / symbolic 478); segmentation only 0.0273%.
 Entropy 0.397 all positions, 0.687 at non-canonical positions. DAPO for
-the same checkpoint: 0.0238%. The Think and DPO AIME cells are still
-running.
+the same checkpoint: 0.0238%. Within-model AIME − DAPO (per the spec):
+headline +0.0035 pp, per-token z = 3.0 (p = 0.002), per-rollout
+permutation p = 0.41; segmentation only +0.0036 pp, z = 3.1 (p = 0.002),
+per-rollout p = 0.38. The Think and DPO AIME cells are still running.

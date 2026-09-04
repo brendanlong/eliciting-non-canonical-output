@@ -337,6 +337,32 @@ p-value and let the reader decide what to believe. Everything else
 (think vs answer, length, position, span shapes, digits, entropy) is
 descriptive.
 
+Added after the DAPO cells (2026-09-03): also compare DAPO to AIME
+*within* each checkpoint, same two tests; expected to be indistinguishable
+or AIME slightly higher (prediction 10).
+
+## Added after the DAPO cells (Brendan, 2026-09-03)
+
+The two most on-policy-RL'd checkpoints came out on opposite sides of
+DPO (Think RL final far below it, RL-Zero-Math above it). Current
+hypothesis: this is general training amount, i.e. with training quality
+approximately held equal (which is not true between Think and Zero), more
+training reduces the non-canonical rate; Think RL final has more training
+than DPO, and both have more than Zero.
+
+Next cells, contingent on AIME coming out as expected:
+
+13. **Think-SFT (pre-DPO) on DAPO 500.** Prediction: its rate is higher
+    than DPO's, because the model has less training.
+14. **An earlier RL-Zero-Math step checkpoint on DAPO 500** (compliance
+    and success rate must be monitored, since an early checkpoint may not
+    attempt the task properly). Direction to be observed: whether the
+    rate goes up or down from the earlier step to the final one.
+
+After that section: a cheap comparison in another family (Llama or Qwen)
+and possibly the chat prompts, to see whether the pattern is
+model-specific or task-specific.
+
 ## Deferred and out of scope for v1
 
 - **Elicitation** (prompting models into non-canonical output). Planned
