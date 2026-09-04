@@ -61,3 +61,13 @@ def test_split_word_gives_two_vocab_tokens_with_the_same_bytes(an):
     assert pieces is not None and len(pieces) == 2 and pieces != [t]
     assert b"".join(an.token_bytes(pieces)) == an.token_bytes([t])[0]
     assert split_word(an, enc(an, " a")[0], random.Random(0)) is None
+
+
+def test_build_pair_rejects_a_window_cut_inside_a_character(an):
+    # A window whose last token is a lone continuation byte decodes with U+FFFD, so the
+    # canonical re-encoding has different bytes; the pair must be refused, not misaligned.
+    bad = next(t for t in range(0, 100256) if (b := an.token_bytes([t])[0]) and (b[0] & 0xC0) == 0x80 and len(b) == 1)
+    prefix, light, house = enc(an, "The word is"), enc(an, " light"), enc(an, "house")
+    ids = prefix + light + house + enc(an, " and more text follows here") + [bad]
+    assert build_pair(an, [], ids, len(prefix), 2, before=100, after=100) is None
+    assert build_pair(an, [], ids[:-1], len(prefix), 2, before=100, after=100) is not None

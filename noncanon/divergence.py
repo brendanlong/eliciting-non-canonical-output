@@ -80,6 +80,8 @@ def build_pair(an: Analyzer, prompt_ids: list[int], ids: list[int], pos: int, sp
     if canon[: len(prefix)] != prefix or canon == window:
         return None  # prefix not reproduced (a merge across the window edge) or nothing differs
     bytes_a, bytes_b = an.token_bytes(window), an.token_bytes(canon)
+    if b"".join(bytes_a) != b"".join(bytes_b):
+        return None  # the window ends inside a multi-byte character; decode() would pad it and misalign byte offsets
     span_end_byte = sum(len(b) for b in bytes_a[: pos - start + span_len])
     bounds = shared_boundaries(bytes_a, bytes_b, span_end_byte)
     if not bounds:
@@ -112,16 +114,19 @@ def split_word(an: Analyzer, t: int, rng: random.Random) -> list[int] | None:
 def control_pairs(an: Analyzer, records: list[dict], depths: list[int], n: int, before: int, after: int, seed: int) -> list[tuple[dict, dict]]:
     """Arbitrary re-tokenizations at span-matched depths in event-free rollouts."""
     rng = random.Random(seed)
-    out = []
+    out, used = [], set()
     tries = 0
     while len(out) < n and tries < 20 * n:
         tries += 1
-        rec, depth = rng.choice(records), rng.choice(depths)
-        ids = list(rec["token_ids"])
-        if len(ids) < 32:
+        depth = rng.choice(depths)
+        # Depth-matched: draw the control from rollouts long enough to hold the span depth (event-free
+        # rollouts are shorter on average; clamping the depth to a short rollout would bias controls shallow).
+        long_enough = [r for r in records if len(r["token_ids"]) >= depth + 64]
+        if not long_enough:
             continue
-        pos = min(depth, len(ids) - 16) + rng.randint(-24, 24)
-        pos = max(1, min(len(ids) - 8, pos))
+        rec = rng.choice(long_enough)
+        ids = list(rec["token_ids"])
+        pos = max(1, min(len(ids) - 8, depth + rng.randint(-24, 24)))
         for p in range(pos, min(pos + 48, len(ids) - 4)):
             if ids[p] in an.special:
                 continue
@@ -129,8 +134,11 @@ def control_pairs(an: Analyzer, records: list[dict], depths: list[int], n: int, 
             if pieces is None:
                 continue
             perturbed = ids[:p] + pieces + ids[p + 1:]
+            if (rec["prompt_id"], rec["sample"], p) in used:
+                continue
             pair = build_pair(an, list(rec["prompt_token_ids"]), perturbed, p, len(pieces), before, after)
             if pair is not None:
+                used.add((rec["prompt_id"], rec["sample"], p))
                 out.append((pair, {"prompt_id": rec["prompt_id"], "sample": rec["sample"], "pos": p, "shape": "control-split", "emitted": pieces, "canonical": [ids[p]]}))
                 break
     return out
@@ -157,7 +165,10 @@ class Model:
             idx = torch.tensor(positions, device=self.device)
             final = torch.log_softmax(out.logits[0, idx].float(), -1)
             hidden = [out.hidden_states[l][0, idx] for l in self.layers]
-            lens = [torch.log_softmax(self.model.lm_head(self.model.model.norm(h)).float(), -1) for h in hidden]
+            # transformers returns the final entry of hidden_states already passed through the
+            # model's norm; applying it again would double-normalise the last layer.
+            n_layers = self.model.config.num_hidden_layers
+            lens = [torch.log_softmax(self.model.lm_head(h if l == n_layers else self.model.model.norm(h)).float(), -1) for l, h in zip(self.layers, hidden)]
         return final, lens, hidden
 
 
@@ -239,7 +250,15 @@ def run_cell(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: P
 
 # --- summary (CPU) ------------------------------------------------------------------
 def load_table(d: Path, arm: str) -> dict[str, np.ndarray]:
+    """Rows of one cell, with duplicate measurements dropped (the 2026-09-04 run drew controls with replacement)."""
     t = pq.read_table(d / f"{arm}.parquet")
+    keys = list(zip(*(t.column(c).to_pylist() for c in ("kind", "prompt_id", "sample", "span_pos", "distance_tokens"))))
+    seen, keep = set(), []
+    for i, k in enumerate(keys):
+        if k not in seen:
+            seen.add(k)
+            keep.append(i)
+    t = t.take(keep)
     cols = {c: t.column(c).to_numpy(zero_copy_only=False) for c in ("kind", "prompt_id", "sample", "span_pos", "distance_tokens", "kl_ab", "top1_agree")}
     cols["lens_layers"] = t.column("lens_layers")[0].as_py() if len(t) else []
     cols["lens_kl"] = np.array(t.column("lens_kl").to_pylist(), dtype=float) if len(t) else np.zeros((0, 0))
@@ -270,8 +289,11 @@ def summarize(dirs: list[str], arm: str) -> None:
 
 
 def summarize_lens(dirs: list[str], arm: str, max_distance: int = 16) -> None:
-    print(f"| cell | kind | layer: mean logit-lens KL(A‖B) / mean residual cosine distance, boundaries ≤ {max_distance} tokens after the span |")
-    print("|---|---|---|")
+    """Per-layer table over boundaries near the span. The last entry of ``lens_layers`` is the model's
+    final layer, whose stored state is post-norm; its logit lens is the final logits, so the final
+    column reports KL(A‖B) of the final distribution and no cosine."""
+    print(f"| cell | kind | layer: mean logit-lens KL(A‖B) / mean residual cosine distance (pre-norm), boundaries ≤ {max_distance} tokens after the span | final logits: mean KL(A‖B) |")
+    print("|---|---|---|--:|")
     for spec in dirs:
         label, _, d = spec.rpartition("=")
         d = Path(d); label = label or d.name
@@ -281,7 +303,8 @@ def summarize_lens(dirs: list[str], arm: str, max_distance: int = 16) -> None:
             if not m.any():
                 continue
             kl, cos = c["lens_kl"][m].mean(0), c["hidden_cos_dist"][m].mean(0)
-            print(f"| {label} | {kind} | " + "; ".join(f"L{l}: {k:.3f} / {x:.4f}" for l, k, x in zip(c["lens_layers"], kl, cos)) + " |")
+            layers = c["lens_layers"][:-1]  # drop the final entry: see docstring
+            print(f"| {label} | {kind} | " + "; ".join(f"L{l}: {k:.3f} / {x:.4f}" for l, k, x in zip(layers, kl, cos)) + f" | {c['kl_ab'][m].mean():.3f} |")
 
 
 def fetch(run: str, prompt_set: str, repo: str) -> None:

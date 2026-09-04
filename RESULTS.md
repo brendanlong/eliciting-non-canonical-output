@@ -1233,11 +1233,13 @@ Reading, all rollouts: the large cells have about as many multi-event
 rollouts as a Poisson process would give (Think-DPO 119 vs 118 expected,
 Instruct-DPO 37 vs 32) or fewer (RL-Zero 88 vs 130), so events are not
 concentrated in prone rollouts beyond what length predicts; the small
-cells exceed it (Tulu-3-SFT 9 vs 3, whose word-salad rollouts carry
-several events each). Locally, an event does raise the chance of another
-within 64 tokens in every cell but Think-DPO and Instruct RL final
-(Think RL final 32% vs 0.1%, RL-Zero 18% vs 3%, Instruct-SFT 36% vs 0.4%;
-Think-DPO 2.0% vs 1.3%), and consecutive events sit closer together than
+cells exceed it (Tulu-3-SFT 9 vs 3). The chance of another event within
+64 tokens of an event exceeds the depth-matched baseline in every cell
+except Instruct RL final (0.0% vs 0.6%), by a lot in some (Think RL final
+32% vs 0.1%, RL-Zero 18% vs 3%, Instruct-SFT 36% vs 0.4%) and by little
+in the DPO cells (Think-DPO 2.0% vs 1.3%, Instruct-DPO 4.0% vs 0.6%); this
+baseline does not condition on the rollout having any event, so the
+excess includes propensity. Consecutive events sit closer together than
 random placement in the same rollout in 9 of 12 cells. Restricting to
 consecutive events with different span text separates the two stories:
 in RL-Zero step 2000 and Think RL final the clustering disappears (41%
@@ -1246,7 +1248,9 @@ and 84% of consecutive events repeat the same text; different-text gaps
 Think-DPO it stays (1,019 vs 1,725, p < 0.0005; only 18% repeats) and in
 Tulu-3-SFT too (47 vs 111, p < 0.0005; 2.5% repeats).
 
-*Notes from Claude:* so "one event makes the next more likely" has two
+*Notes from Claude:* Tulu-3-SFT's excess of multi-event rollouts is its
+word-salad rollouts, which carry several events each (see the Tulu
+section). So "one event makes the next more likely" has two
 different answers. For the on-policy RL cells (RL-Zero, Think RL final)
 the excess is the same span recurring, the argmax habits described in the
 tail analysis, which is repetition of a learned tokenization rather than a
@@ -1294,19 +1298,19 @@ uv run python -m noncanon.divergence summarize \
 | Think-SFT | span | 58 | 29752 | 0.318 / 0.0535 / 31.0% (n=58) | 0.031 / 0.0030 / 4.3% (n=232) | 0.006 / 0.0009 / 2.9% (n=696) | 0.002 / 0.0002 / 1.2% (n=2784) | 0.001 / 0.0001 / 0.9% (n=11136) | 0.001 / 0.0000 / 0.7% (n=14846) |
 | Think-SFT | control | 58 | 16269 | 0.270 / 0.0276 / 8.6% (n=58) | 0.017 / 0.0018 / 1.7% (n=232) | 0.004 / 0.0003 / 1.8% (n=553) | 0.001 / 0.0002 / 0.8% (n=1634) | 0.001 / 0.0001 / 1.0% (n=6105) | 0.001 / 0.0001 / 0.7% (n=7687) |
 | Think-DPO | span | 230 | 117490 | 0.656 / 0.2245 / 36.1% (n=230) | 0.101 / 0.0068 / 9.2% (n=920) | 0.033 / 0.0001 / 3.2% (n=2760) | 0.006 / 0.0000 / 0.9% (n=11040) | 0.002 / 0.0000 / 0.5% (n=44160) | 0.001 / 0.0000 / 0.5% (n=58380) |
-| Think-DPO | control | 229 | 97162 | 0.154 / 0.0115 / 10.4% (n=230) | 0.068 / 0.0002 / 4.0% (n=920) | 0.011 / 0.0000 / 1.8% (n=2529) | 0.003 / 0.0000 / 1.0% (n=9229) | 0.001 / 0.0000 / 0.6% (n=36127) | 0.001 / 0.0000 / 0.5% (n=48127) |
+| Think-DPO | control | 229 | 97149 | 0.155 / 0.0116 / 10.5% (n=229) | 0.069 / 0.0002 / 4.0% (n=916) | 0.011 / 0.0000 / 1.8% (n=2521) | 0.003 / 0.0000 / 1.0% (n=9229) | 0.001 / 0.0000 / 0.6% (n=36127) | 0.001 / 0.0000 / 0.5% (n=48127) |
 | Think RL final | span | 48 | 24514 | 0.209 / 0.0684 / 22.9% (n=48) | 0.057 / 0.0053 / 5.2% (n=192) | 0.012 / 0.0005 / 3.8% (n=576) | 0.002 / 0.0001 / 1.2% (n=2304) | 0.001 / 0.0000 / 0.6% (n=9216) | 0.000 / 0.0000 / 0.7% (n=12178) |
 | Think RL final | control | 48 | 17164 | 0.131 / 0.0317 / 6.2% (n=48) | 0.042 / 0.0014 / 3.1% (n=192) | 0.004 / 0.0006 / 1.9% (n=472) | 0.001 / 0.0001 / 1.2% (n=1651) | 0.001 / 0.0000 / 1.0% (n=6353) | 0.000 / 0.0000 / 0.6% (n=8448) |
 | RL-Zero step 300 | span | 70 | 35611 | 0.314 / 0.0075 / 11.4% (n=70) | 0.057 / 0.0008 / 4.6% (n=280) | 0.016 / 0.0002 / 2.6% (n=840) | 0.002 / 0.0000 / 0.8% (n=3360) | 0.000 / 0.0000 / 0.5% (n=13440) | 0.000 / 0.0000 / 0.3% (n=17621) |
 | RL-Zero step 300 | control | 70 | 20591 | 0.132 / 0.0255 / 4.3% (n=70) | 0.121 / 0.0017 / 1.8% (n=280) | 0.022 / 0.0000 / 1.4% (n=656) | 0.001 / 0.0000 / 1.5% (n=1983) | 0.000 / 0.0000 / 0.4% (n=7618) | 0.000 / 0.0000 / 0.3% (n=9984) |
 | RL-Zero step 2000 | span | 294 | 150317 | 0.902 / 0.3018 / 15.3% (n=294) | 0.422 / 0.0157 / 8.9% (n=1176) | 0.026 / 0.0000 / 2.5% (n=3528) | 0.002 / 0.0000 / 0.6% (n=14112) | 0.000 / 0.0000 / 0.4% (n=56443) | 0.000 / 0.0000 / 0.4% (n=74764) |
-| RL-Zero step 2000 | control | 270 | 126065 | 0.821 / 0.0141 / 7.8% (n=294) | 0.197 / 0.0007 / 3.1% (n=1176) | 0.013 / 0.0000 / 1.4% (n=3210) | 0.002 / 0.0000 / 0.8% (n=11908) | 0.001 / 0.0000 / 0.6% (n=47014) | 0.000 / 0.0000 / 0.5% (n=62463) |
+| RL-Zero step 2000 | control | 270 | 114259 | 0.773 / 0.0141 / 7.4% (n=270) | 0.209 / 0.0007 / 3.4% (n=1080) | 0.014 / 0.0000 / 1.5% (n=2932) | 0.002 / 0.0000 / 0.9% (n=10804) | 0.001 / 0.0000 / 0.6% (n=42598) | 0.000 / 0.0000 / 0.5% (n=56575) |
 | Instruct-SFT | span | 13 | 3486 | 0.390 / 0.1809 / 30.8% (n=13) | 0.092 / 0.0111 / 3.8% (n=52) | 0.011 / 0.0020 / 4.5% (n=156) | 0.016 / 0.0009 / 1.6% (n=624) | 0.002 / 0.0002 / 1.6% (n=1594) | 0.001 / 0.0000 / 1.1% (n=1047) |
 | Instruct-SFT | control | 13 | 3741 | 0.444 / 0.1060 / 7.7% (n=13) | 0.243 / 0.0068 / 15.4% (n=52) | 0.012 / 0.0029 / 1.4% (n=139) | 0.005 / 0.0006 / 1.1% (n=528) | 0.002 / 0.0001 / 1.2% (n=1744) | 0.001 / 0.0000 / 0.9% (n=1265) |
 | Instruct-DPO | span | 106 | 48960 | 0.383 / 0.0681 / 22.6% (n=106) | 0.077 / 0.0055 / 8.7% (n=424) | 0.015 / 0.0008 / 2.8% (n=1272) | 0.004 / 0.0002 / 1.7% (n=5072) | 0.001 / 0.0000 / 0.8% (n=18960) | 0.001 / 0.0000 / 0.8% (n=23126) |
-| Instruct-DPO | control | 102 | 20206 | 0.626 / 0.0415 / 8.5% (n=106) | 0.127 / 0.0011 / 5.7% (n=424) | 0.021 / 0.0001 / 2.3% (n=963) | 0.009 / 0.0001 / 1.3% (n=2158) | 0.001 / 0.0000 / 0.7% (n=7609) | 0.000 / 0.0000 / 0.8% (n=8946) |
+| Instruct-DPO | control | 102 | 20166 | 0.616 / 0.0415 / 8.8% (n=102) | 0.109 / 0.0012 / 5.1% (n=408) | 0.022 / 0.0001 / 2.3% (n=945) | 0.009 / 0.0001 / 1.3% (n=2156) | 0.001 / 0.0000 / 0.7% (n=7609) | 0.000 / 0.0000 / 0.8% (n=8946) |
 | Instruct RL final | span | 28 | 13436 | 0.381 / 0.0715 / 21.4% (n=28) | 0.124 / 0.0028 / 10.7% (n=112) | 0.015 / 0.0005 / 2.4% (n=336) | 0.003 / 0.0001 / 1.6% (n=1344) | 0.001 / 0.0000 / 1.0% (n=5221) | 0.001 / 0.0000 / 0.7% (n=6395) |
-| Instruct RL final | control | 27 | 6515 | 0.760 / 0.0187 / 17.9% (n=28) | 0.298 / 0.0008 / 3.6% (n=112) | 0.010 / 0.0003 / 2.7% (n=257) | 0.001 / 0.0000 / 0.7% (n=712) | 0.001 / 0.0000 / 0.7% (n=2498) | 0.000 / 0.0000 / 0.5% (n=2908) |
+| Instruct RL final | control | 27 | 6002 | 0.788 / 0.0214 / 18.5% (n=27) | 0.308 / 0.0008 / 3.7% (n=108) | 0.010 / 0.0002 / 2.4% (n=245) | 0.001 / 0.0000 / 0.8% (n=664) | 0.001 / 0.0000 / 0.7% (n=2306) | 0.000 / 0.0000 / 0.5% (n=2652) |
 | Tulu-3-SFT | span | 17 | 6263 | 0.099 / 0.0359 / 11.8% (n=17) | 0.015 / 0.0020 / 4.4% (n=68) | 0.014 / 0.0013 / 3.4% (n=204) | 0.004 / 0.0002 / 1.8% (n=816) | 0.335 / 0.0000 / 2.6% (n=2640) | 0.561 / 0.0001 / 3.6% (n=2518) |
 | Tulu-3-SFT | control | 17 | 927 | 2.437 / 2.6110 / 17.6% (n=17) | 0.308 / 0.0089 / 7.4% (n=68) | 0.004 / 0.0002 / 1.0% (n=98) | 0.004 / 0.0000 / 1.9% (n=215) | 0.000 / 0.0000 / 0.2% (n=440) | 0.000 / 0.0000 / 3.4% (n=89) |
 | Tulu-3-DPO | span | 10 | 3568 | 0.141 / 0.0070 / 10.0% (n=10) | 0.010 / 0.0001 / 0.0% (n=40) | 0.001 / 0.0000 / 2.5% (n=120) | 0.001 / 0.0000 / 0.8% (n=478) | 0.000 / 0.0000 / 0.6% (n=1437) | 0.000 / 0.0000 / 0.4% (n=1483) |
@@ -1329,68 +1333,76 @@ uv run python -m noncanon.divergence summarize --lens \
 
 </details>
 
-| cell | kind | layer: mean logit-lens KL(A‖B) / mean residual cosine distance, boundaries ≤ 16 tokens after the span |
-|---|---|---|
-| Think-SFT | span | L4: 0.077 / 0.0308; L8: 0.054 / 0.0218; L12: 0.042 / 0.0169; L16: 0.037 / 0.0142; L20: 0.046 / 0.0120; L24: 0.074 / 0.0109; L28: 0.068 / 0.0104; L32: 0.034 / 0.0070 |
-| Think-SFT | control | L4: 0.162 / 0.0660; L8: 0.121 / 0.0487; L12: 0.092 / 0.0381; L16: 0.090 / 0.0328; L20: 0.089 / 0.0292; L24: 0.095 / 0.0278; L28: 0.057 / 0.0269; L32: 0.037 / 0.0337 |
-| Think-DPO | span | L4: 0.078 / 0.0304; L8: 0.063 / 0.0244; L12: 0.065 / 0.0258; L16: 0.067 / 0.0255; L20: 0.081 / 0.0231; L24: 0.163 / 0.0233; L28: 0.171 / 0.0235; L32: 0.092 / 0.0223 |
-| Think-DPO | control | L4: 0.137 / 0.0552; L8: 0.096 / 0.0375; L12: 0.072 / 0.0282; L16: 0.075 / 0.0230; L20: 0.074 / 0.0195; L24: 0.090 / 0.0183; L28: 0.072 / 0.0184; L32: 0.038 / 0.0221 |
-| Think RL final | span | L4: 0.086 / 0.0336; L8: 0.062 / 0.0248; L12: 0.052 / 0.0206; L16: 0.047 / 0.0182; L20: 0.056 / 0.0158; L24: 0.105 / 0.0151; L28: 0.108 / 0.0151; L32: 0.037 / 0.0118 |
-| Think RL final | control | L4: 0.156 / 0.0642; L8: 0.116 / 0.0489; L12: 0.096 / 0.0392; L16: 0.099 / 0.0333; L20: 0.099 / 0.0283; L24: 0.110 / 0.0265; L28: 0.087 / 0.0261; L32: 0.030 / 0.0324 |
-| RL-Zero step 300 | span | L4: 0.078 / 0.0264; L8: 0.054 / 0.0184; L12: 0.046 / 0.0157; L16: 0.043 / 0.0146; L20: 0.049 / 0.0133; L24: 0.077 / 0.0129; L28: 0.093 / 0.0128; L32: 0.043 / 0.0080 |
-| RL-Zero step 300 | control | L4: 0.191 / 0.0655; L8: 0.160 / 0.0515; L12: 0.129 / 0.0429; L16: 0.128 / 0.0366; L20: 0.153 / 0.0324; L24: 0.253 / 0.0308; L28: 0.172 / 0.0303; L32: 0.054 / 0.0307 |
-| RL-Zero step 2000 | span | L4: 0.143 / 0.0472; L8: 0.112 / 0.0379; L12: 0.100 / 0.0337; L16: 0.085 / 0.0284; L20: 0.076 / 0.0233; L24: 0.100 / 0.0253; L28: 0.119 / 0.0305; L32: 0.170 / 0.0396 |
-| RL-Zero step 2000 | control | L4: 0.163 / 0.0548; L8: 0.133 / 0.0399; L12: 0.108 / 0.0336; L16: 0.098 / 0.0273; L20: 0.097 / 0.0215; L24: 0.108 / 0.0203; L28: 0.100 / 0.0226; L32: 0.109 / 0.0296 |
-| Instruct-SFT | span | L4: 0.076 / 0.0285; L8: 0.060 / 0.0225; L12: 0.058 / 0.0214; L16: 0.059 / 0.0222; L20: 0.057 / 0.0204; L24: 0.135 / 0.0198; L28: 0.090 / 0.0200; L32: 0.050 / 0.0143 |
-| Instruct-SFT | control | L4: 0.169 / 0.0621; L8: 0.131 / 0.0503; L12: 0.119 / 0.0454; L16: 0.121 / 0.0401; L20: 0.151 / 0.0331; L24: 0.236 / 0.0300; L28: 0.197 / 0.0316; L32: 0.125 / 0.0327 |
-| Instruct-DPO | span | L4: 0.077 / 0.0293; L8: 0.059 / 0.0226; L12: 0.052 / 0.0199; L16: 0.049 / 0.0173; L20: 0.059 / 0.0149; L24: 0.089 / 0.0145; L28: 0.101 / 0.0144; L32: 0.056 / 0.0130 |
-| Instruct-DPO | control | L4: 0.182 / 0.0685; L8: 0.157 / 0.0582; L12: 0.137 / 0.0528; L16: 0.141 / 0.0474; L20: 0.168 / 0.0415; L24: 0.203 / 0.0392; L28: 0.179 / 0.0390; L32: 0.097 / 0.0387 |
-| Instruct RL final | span | L4: 0.087 / 0.0319; L8: 0.071 / 0.0259; L12: 0.077 / 0.0219; L16: 0.072 / 0.0181; L20: 0.073 / 0.0151; L24: 0.076 / 0.0146; L28: 0.100 / 0.0156; L32: 0.066 / 0.0155 |
-| Instruct RL final | control | L4: 0.181 / 0.0675; L8: 0.135 / 0.0531; L12: 0.111 / 0.0438; L16: 0.138 / 0.0377; L20: 0.161 / 0.0335; L24: 0.207 / 0.0323; L28: 0.195 / 0.0328; L32: 0.162 / 0.0345 |
-| Tulu-3-SFT | span | L4: 0.089 / 0.0176; L8: 0.070 / 0.0144; L12: 0.069 / 0.0141; L16: 0.051 / 0.0104; L20: 0.044 / 0.0078; L24: 0.047 / 0.0074; L28: 0.057 / 0.0076; L32: 0.021 / 0.0074 |
-| Tulu-3-SFT | control | L4: 0.474 / 0.0984; L8: 0.483 / 0.0986; L12: 0.515 / 0.1046; L16: 0.363 / 0.0764; L20: 0.337 / 0.0676; L24: 0.374 / 0.0624; L28: 0.368 / 0.0632; L32: 0.382 / 0.0682 |
-| Tulu-3-DPO | span | L4: 0.081 / 0.0164; L8: 0.049 / 0.0099; L12: 0.045 / 0.0091; L16: 0.040 / 0.0076; L20: 0.030 / 0.0056; L24: 0.042 / 0.0048; L28: 0.042 / 0.0044; L32: 0.011 / 0.0052 |
-| Tulu-3-DPO | control | L4: 0.294 / 0.0590; L8: 0.236 / 0.0475; L12: 0.211 / 0.0428; L16: 0.154 / 0.0314; L20: 0.152 / 0.0273; L24: 0.213 / 0.0252; L28: 0.204 / 0.0260; L32: 0.134 / 0.0285 |
-| Tulu-3 RLVR | span | L4: 0.130 / 0.0261; L8: 0.147 / 0.0287; L12: 0.141 / 0.0293; L16: 0.112 / 0.0234; L20: 0.095 / 0.0186; L24: 0.153 / 0.0173; L28: 0.237 / 0.0166; L32: 0.106 / 0.0222 |
-| Tulu-3 RLVR | control | L4: 0.191 / 0.0387; L8: 0.129 / 0.0255; L12: 0.102 / 0.0205; L16: 0.067 / 0.0141; L20: 0.077 / 0.0113; L24: 0.059 / 0.0109; L28: 0.040 / 0.0104; L32: 0.124 / 0.0130 |
-| Tulu-3.1 | span | L4: 0.091 / 0.0195; L8: 0.107 / 0.0213; L12: 0.117 / 0.0233; L16: 0.091 / 0.0192; L20: 0.072 / 0.0150; L24: 0.071 / 0.0126; L28: 0.110 / 0.0106; L32: 0.009 / 0.0088 |
-| Tulu-3.1 | control | L4: 0.203 / 0.0426; L8: 0.152 / 0.0313; L12: 0.131 / 0.0267; L16: 0.090 / 0.0189; L20: 0.073 / 0.0136; L24: 0.115 / 0.0114; L28: 0.087 / 0.0101; L32: 0.009 / 0.0123 |
+| cell | kind | layer: mean logit-lens KL(A‖B) / mean residual cosine distance (pre-norm), boundaries ≤ 16 tokens after the span | final logits: mean KL(A‖B) |
+|---|---|---|--:|
+| Think-SFT | span | L4: 0.077 / 0.0308; L8: 0.054 / 0.0218; L12: 0.042 / 0.0169; L16: 0.037 / 0.0142; L20: 0.046 / 0.0120; L24: 0.074 / 0.0109; L28: 0.068 / 0.0104 | 0.030 |
+| Think-SFT | control | L4: 0.162 / 0.0660; L8: 0.121 / 0.0487; L12: 0.092 / 0.0381; L16: 0.090 / 0.0328; L20: 0.089 / 0.0292; L24: 0.095 / 0.0278; L28: 0.057 / 0.0269 | 0.026 |
+| Think-DPO | span | L4: 0.078 / 0.0304; L8: 0.063 / 0.0244; L12: 0.065 / 0.0258; L16: 0.067 / 0.0255; L20: 0.081 / 0.0231; L24: 0.163 / 0.0233; L28: 0.171 / 0.0235 | 0.085 |
+| Think-DPO | control | L4: 0.138 / 0.0552; L8: 0.097 / 0.0375; L12: 0.072 / 0.0283; L16: 0.075 / 0.0230; L20: 0.074 / 0.0195; L24: 0.090 / 0.0184; L28: 0.072 / 0.0184 | 0.034 |
+| Think RL final | span | L4: 0.086 / 0.0336; L8: 0.062 / 0.0248; L12: 0.052 / 0.0206; L16: 0.047 / 0.0182; L20: 0.056 / 0.0158; L24: 0.105 / 0.0151; L28: 0.108 / 0.0151 | 0.034 |
+| Think RL final | control | L4: 0.156 / 0.0642; L8: 0.116 / 0.0489; L12: 0.096 / 0.0392; L16: 0.099 / 0.0333; L20: 0.099 / 0.0283; L24: 0.110 / 0.0265; L28: 0.087 / 0.0261 | 0.023 |
+| RL-Zero step 300 | span | L4: 0.078 / 0.0264; L8: 0.054 / 0.0184; L12: 0.046 / 0.0157; L16: 0.043 / 0.0146; L20: 0.049 / 0.0133; L24: 0.077 / 0.0129; L28: 0.093 / 0.0128 | 0.043 |
+| RL-Zero step 300 | control | L4: 0.191 / 0.0655; L8: 0.160 / 0.0515; L12: 0.129 / 0.0429; L16: 0.128 / 0.0366; L20: 0.153 / 0.0324; L24: 0.253 / 0.0308; L28: 0.172 / 0.0303 | 0.057 |
+| RL-Zero step 2000 | span | L4: 0.143 / 0.0472; L8: 0.112 / 0.0379; L12: 0.100 / 0.0337; L16: 0.085 / 0.0284; L20: 0.076 / 0.0233; L24: 0.100 / 0.0253; L28: 0.119 / 0.0305 | 0.171 |
+| RL-Zero step 2000 | control | L4: 0.162 / 0.0546; L8: 0.134 / 0.0397; L12: 0.109 / 0.0333; L16: 0.100 / 0.0272; L20: 0.100 / 0.0216; L24: 0.109 / 0.0203; L28: 0.103 / 0.0223 | 0.111 |
+| Instruct-SFT | span | L4: 0.076 / 0.0285; L8: 0.060 / 0.0225; L12: 0.058 / 0.0214; L16: 0.059 / 0.0222; L20: 0.057 / 0.0204; L24: 0.135 / 0.0198; L28: 0.090 / 0.0200 | 0.053 |
+| Instruct-SFT | control | L4: 0.169 / 0.0621; L8: 0.131 / 0.0503; L12: 0.119 / 0.0454; L16: 0.121 / 0.0401; L20: 0.151 / 0.0331; L24: 0.236 / 0.0300; L28: 0.197 / 0.0316 | 0.098 |
+| Instruct-DPO | span | L4: 0.077 / 0.0293; L8: 0.059 / 0.0226; L12: 0.052 / 0.0199; L16: 0.049 / 0.0173; L20: 0.059 / 0.0149; L24: 0.089 / 0.0145; L28: 0.101 / 0.0144 | 0.051 |
+| Instruct-DPO | control | L4: 0.177 / 0.0666; L8: 0.151 / 0.0559; L12: 0.132 / 0.0505; L16: 0.135 / 0.0453; L20: 0.161 / 0.0396; L24: 0.195 / 0.0375; L28: 0.177 / 0.0373 | 0.088 |
+| Instruct RL final | span | L4: 0.087 / 0.0319; L8: 0.071 / 0.0259; L12: 0.077 / 0.0219; L16: 0.072 / 0.0181; L20: 0.073 / 0.0151; L24: 0.076 / 0.0146; L28: 0.100 / 0.0156 | 0.062 |
+| Instruct RL final | control | L4: 0.178 / 0.0672; L8: 0.134 / 0.0528; L12: 0.112 / 0.0443; L16: 0.142 / 0.0385; L20: 0.166 / 0.0342; L24: 0.211 / 0.0330; L28: 0.204 / 0.0334 | 0.150 |
+| Tulu-3-SFT | span | L4: 0.089 / 0.0176; L8: 0.070 / 0.0144; L12: 0.069 / 0.0141; L16: 0.051 / 0.0104; L20: 0.044 / 0.0078; L24: 0.047 / 0.0074; L28: 0.057 / 0.0076 | 0.019 |
+| Tulu-3-SFT | control | L4: 0.474 / 0.0984; L8: 0.483 / 0.0986; L12: 0.515 / 0.1046; L16: 0.363 / 0.0764; L20: 0.337 / 0.0676; L24: 0.374 / 0.0624; L28: 0.368 / 0.0632 | 0.343 |
+| Tulu-3-DPO | span | L4: 0.081 / 0.0164; L8: 0.049 / 0.0099; L12: 0.045 / 0.0091; L16: 0.040 / 0.0076; L20: 0.030 / 0.0056; L24: 0.042 / 0.0048; L28: 0.042 / 0.0044 | 0.012 |
+| Tulu-3-DPO | control | L4: 0.294 / 0.0590; L8: 0.236 / 0.0475; L12: 0.211 / 0.0428; L16: 0.154 / 0.0314; L20: 0.152 / 0.0273; L24: 0.213 / 0.0252; L28: 0.204 / 0.0260 | 0.135 |
+| Tulu-3 RLVR | span | L4: 0.130 / 0.0261; L8: 0.147 / 0.0287; L12: 0.141 / 0.0293; L16: 0.112 / 0.0234; L20: 0.095 / 0.0186; L24: 0.153 / 0.0173; L28: 0.237 / 0.0166 | 0.102 |
+| Tulu-3 RLVR | control | L4: 0.191 / 0.0387; L8: 0.129 / 0.0255; L12: 0.102 / 0.0205; L16: 0.067 / 0.0141; L20: 0.077 / 0.0113; L24: 0.059 / 0.0109; L28: 0.040 / 0.0104 | 0.102 |
+| Tulu-3.1 | span | L4: 0.091 / 0.0195; L8: 0.107 / 0.0213; L12: 0.117 / 0.0233; L16: 0.091 / 0.0192; L20: 0.072 / 0.0150; L24: 0.071 / 0.0126; L28: 0.110 / 0.0106 | 0.009 |
+| Tulu-3.1 | control | L4: 0.203 / 0.0426; L8: 0.152 / 0.0313; L12: 0.131 / 0.0267; L16: 0.090 / 0.0189; L20: 0.073 / 0.0136; L24: 0.115 / 0.0114; L28: 0.087 / 0.0101 | 0.010 |
 <!-- end generated -->
 
-Reading. At the span's end the two tokenizations give clearly different
+Reading. At the span's end the two tokenizations give different
 next-token distributions: the argmax differs for 36% of Think-DPO spans,
-31% Think-SFT, 23% Think RL final, 15% RL-Zero, 21–31% on the Instruct
-ladder, and 0–13% on Tulu's small cells; median KL 0.05–0.30 nats in the
-OLMo-3 cells. Arbitrary word splits at matched depth change the argmax
-less often (4–10% in the OLMo-3 cells) though with comparable mean KL.
-The difference decays fast: by 5–16 tokens after the span the argmax
-differs at 2–5% of boundaries for spans and 1–3% for controls, and from
-17 tokens on both sit at the same floor (about 0.5–1.5% of boundaries,
-median KL below 0.001), which is the shared cost of the one-token
-position shift between A and B plus bfloat16 noise rather than anything
-the span did. The logit lens agrees: near the span, controls perturb the
-early layers most (KL and cosine distance largest at layer 4 and falling
-with depth), while the model's own spans perturb the early layers less
-than the controls do and peak in layers 24–28. Two Tulu cells show large
-mean KL far from the span with medians near zero (Tulu-3-SFT spans beyond
-64 tokens, Tulu-3-DPO controls at 65–256): a handful of boundaries inside
-degenerate rollouts.
+31% Think-SFT, 23% Think RL final, 15% RL-Zero step 2000 (11% at step
+300), 21–31% on the Instruct ladder, and 0–13% on Tulu's small cells;
+median KL 0.008–0.30 nats in the OLMo-3 cells. Arbitrary word splits
+change the argmax less often in every OLMo-3 cell (4–19%, the 19% being
+Instruct RL final's 27 controls) but with mean KL as large or larger
+(Think-DPO is the exception: 0.66 vs 0.15). The difference decays fast:
+by 5–16 tokens after the span the argmax differs at 2.4–4.5% of
+boundaries for spans and 1.4–2.4% for controls in the OLMo-3 cells, and
+from 17 tokens on both kinds sit in the same 0.3–1.7% band with median KL
+below 0.001. The logit lens near the span: at layer 4 the model's own
+spans give about half the KL and half the residual cosine distance that
+arbitrary splits do, in all eight OLMo-3 cells; by layers 24–28 the two
+are level or the spans are larger (Think-DPO 0.16–0.17 vs 0.07–0.09). The
+Tulu cells (8–17 spans each) are too small to read beyond the same fast
+decay. Two Tulu cells show large mean KL far from the span with medians
+near zero (Tulu-3-SFT spans beyond 64 tokens, Tulu-3-DPO controls at
+65–256): a handful of boundaries inside degenerate rollouts.
 
 *Notes from Claude:* on Brendan's question, a probe or logit lens run on a
 re-tokenized transcript disagrees with the real computation in the few
 tokens right after a span (about a third of spans flip the next
-prediction in the reasoning models) and agrees to within noise beyond
-roughly 16 tokens, on every checkpoint measured. The clustering result
-above fits this: the model's own spans do not destabilise the rollout,
-and Think-DPO's clustering of different-text events is therefore a
-property of the stretch of text (a region where the tail keeps being
-sampled) rather than contagion from the first span. Two caveats: prefixes
-deeper than 4,096 tokens are truncated to the last 4,096 (recorded per
-row as `prefix_truncated`), and the "floor" is not a true zero, since B
-is one token shorter than A and every later position shifts by one; a
-same-length control would be needed to separate that from bfloat16
-non-determinism, but both are below the per-token disagreement rate of
-interest here.
+prediction in the reasoning models) and agrees to within the floor beyond
+roughly 16 tokens, on every checkpoint measured. That floor (0.3–1.7% of
+argmaxes, median KL < 0.001) is most likely the one-token position shift
+between A and B (B is one token shorter, so every later position moves by
+one) plus bfloat16 non-determinism; a same-length control would be needed
+to separate the two, and both are below the disagreement rate of interest.
+Limits: spans with another event within 4,096 tokens before or 512 after
+were excluded and measurement stops 512 tokens after the span, so this
+does not test contagion at the ~1,000-token scale of Think-DPO's
+different-text clustering above; the controls of this run were drawn
+from event-free rollouts, which are shorter, so their depths are
+shallower than the spans' (median well below in every cell), which the
+code now avoids by drawing controls only from rollouts long enough for
+the sampled depth; prefixes deeper than 4,096 tokens are truncated to the
+last 4,096 (`prefix_truncated` per row); controls of this run were
+sampled with replacement and the duplicates are dropped at summary time;
+and the final-layer logit lens of this run double-applied the model's
+norm, so the per-layer table stops at layer 28 and the final column is
+the KL of the final distribution.
 
 ## Reproduction
 
