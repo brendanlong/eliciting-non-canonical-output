@@ -189,13 +189,19 @@ budget (2.5× the A100).
 | `Olmo-3-7B-Think-DPO` | 500 | 497 stop, 3 length; think closed 490 | 8,184 / 6,710 / 32,764 | 98.5% (18 unparsed) | 207 / 6 |
 | `Olmo-3-7B-RL-Zero-Math` | 500 | 499 stop, 1 length; no think block | 6,265 / 5,360 / 32,767 | 89.6% (1 unparsed) | 5 / 1 |
 
-| checkpoint | canonical tokens | non-canonical (canonical) | rate | emitted in spans | spans | rollouts with ≥1 | span shapes (whitespace / alphabetic / symbolic) |
-|---|--:|--:|--:|--:|--:|--:|---|
-| Think-DPO | 4,091,872 | 655 | 0.0160% | 819 | 403 | 251 / 500 | 232 / 69 / 102 |
-| RL-Zero-Math | 3,132,352 | 742 | 0.0237% | 1,091 | 543 | 290 / 500 | 4 / 176 / 363 |
-| (pilot, Think RL final, 50 prompts, old sample) | 465,293 | 17 | 0.0037% | 20 | 10 | 6 / 50 | 1 / 5 / 4 |
+Headline rate = (canonical tokens in spans + standalone byte-fragment
+events) / (canonical tokens + standalone fragment events), per the
+counting rule recorded in the plan; the segmentation-only rate excludes
+fragments.
 
-Think-DPO: think 631 / 3,750,286 (0.0168%), answer 24 / 341,750 (0.0070%).
+| checkpoint | units | non-canonical | **rate** | segmentation only | spans | fragments (standalone) | rollouts with ≥1 event | span shapes (whitespace / alphabetic / symbolic) |
+|---|--:|--:|--:|--:|--:|--:|--:|---|
+| Think-DPO | 4,092,078 | 762 | **0.0186%** | 655 / 4,091,971 = 0.0160% | 403 | 107 (107) | 275 / 500 | 232 / 69 / 102 |
+| RL-Zero-Math | 3,132,357 | 745 | **0.0238%** | 742 / 3,132,354 = 0.0237% | 543 | 3 (3) | 292 / 500 | 4 / 176 / 363 |
+| (pilot, Think RL final, 50 prompts, old sample) | 465,293 | 17 | 0.0037% | same | 10 | 0 | 6 / 50 | 1 / 5 / 4 |
+
+Think-DPO: think 735 / 3,750,384 (0.0196%), answer 27 / 341,751 (0.0079%);
+segmentation only, think 631 (0.0168%), answer 24 (0.0070%).
 Entropy (top-10, nats): all positions 0.286, at non-canonical positions
 0.803. By outcome: correct 603 / 3.68M (472 rollouts), incorrect 8 / 118k
 (7), truncated 18 / 98k (3), unparsed 26 / 194k (18). By length quartile
@@ -211,11 +217,20 @@ spans: whitespace 4, digit 135, word 407, mixed 18, symbol 527.
 **Byte-fragment events** (the model starts a multi-byte character as
 separate byte tokens and never completes it, e.g. `\xe2\x88` — the first two
 bytes of `−`/`√` — followed by ` geological`; the bytes have no text form so
-they cannot be scored canonical or not, and are reported separately):
-Think-DPO 107 events / 207 tokens in 59 rollouts (53 of those rollouts
-finished and verified correct); RL-Zero-Math 3 events / 5 tokens in 3
-rollouts. Rate if every fragment token is counted as non-canonical:
-Think-DPO 0.0211%, RL-Zero-Math 0.0238%.
+the canonical comparison is undefined): Think-DPO 107 events / 108 tokens
+in 59 rollouts (53 of those rollouts finished and verified correct), all
+standalone (none adjacent to a span); RL-Zero-Math 3 events / 3 tokens in 3
+rollouts. An earlier count of 207 tokens for DPO included the valid token
+following each abandoned prefix; fixed the same day. Transcripts
+(`metrics/transcripts.jsonl`) render fragments as `⟨bytes e2 88⟩`.
+
+**Digit splits.** All-digit spans: RL-Zero-Math 68, of which 52 are in one
+rollout (45 of them `'3'`,`'5'` → `'35'` in `log_35`-style contexts) and 8
+in another; DPO 7 events. Digit tokens in spans over digit tokens emitted:
+RL-Zero-Math 135 / 527,858 (0.026%), Think-DPO 7 / 648,651 (0.001%). One
+Zero example runs the other way: after `log₁₀` the model emitted `'10'` as
+one token where the canonical encoding is `'1'`,`'0'` (the subscript digits
+count toward the pre-tokenizer's three-digit grouping).
 
 **Most common span patterns** (emitted → canonical; count):
 
@@ -234,9 +249,11 @@ dropped-space word joins with a variable name: `' than'`,`'k'` → `' thank'`
 another 30.
 
 **DPO vs Zero, rollouts as the unit** (events cluster, so token-level
-tests overstate certainty). Rollout-bootstrap 95% CIs on the pooled rate:
-DPO 0.0142–0.0179%, Zero 0.0189–0.0296%. Permutation test on the pooled
-rate with rollouts permuted: Zero − DPO = 0.0077 pp, two-sided p = 0.0016.
+tests overstate certainty). Headline rule (fragments counted):
+rollout-bootstrap 95% CIs DPO 0.0164–0.0211%, Zero 0.0189–0.0297%;
+permutation test on the pooled rate with rollouts permuted: Zero − DPO =
+0.0052 pp, two-sided p = 0.057. Segmentation only: CIs DPO 0.0142–0.0179%,
+Zero 0.0189–0.0296%; Zero − DPO = 0.0077 pp, p = 0.0016.
 Rollouts with ≥1 span: 50.2% vs 58.0%, z = 2.5. Spans per rollout: DPO mean
 0.81, variance 1.15, max 8; Zero mean 1.09, variance 8.63, max 52. Median
 per-rollout rate: DPO 0.0052%, Zero 0.0138%. Dropping Zero's two densest

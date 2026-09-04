@@ -176,7 +176,15 @@ truncated rollouts are reported as their own category.
     spans divided by canonical tokens, from a minimal diff between the
     emitted sequence and its canonical re-encoding, so that numerator and
     denominator count the same thing (the emitted-token count inside
-    spans is reported alongside);
+    spans is reported alongside). Byte fragments (the model starts a
+    multi-byte character as separate byte tokens and never completes it;
+    the bytes have no text form, so the canonical comparison is undefined)
+    are counted by this rule (decision 2026-09-03): a fragment adjacent to
+    a non-canonical span is part of that span (+0); a fragment with
+    canonical tokens on both sides is one more event (+1 to numerator and
+    denominator). The segmentation-only rate (fragments excluded) is
+    reported alongside, and fragments are rendered explicitly in the
+    transcripts as `⟨bytes e2 88⟩` so they are distinguishable from text;
   - length-matched rate on the same prompt across checkpoints;
   - sequence-level rate at a stated fixed length (familiar, free);
   - expected non-canonical probability mass from top-k logprobs at each
