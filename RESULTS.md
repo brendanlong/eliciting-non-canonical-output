@@ -321,3 +321,20 @@ the same checkpoint: 0.0238%. Within-model AIME − DAPO (per the spec):
 headline +0.0035 pp, per-token z = 3.0 (p = 0.002), per-rollout
 permutation p = 0.41; segmentation only +0.0036 pp, z = 3.1 (p = 0.002),
 per-rollout p = 0.38. The Think and DPO AIME cells are still running.
+
+### Launched 2026-09-03: Think-SFT and RL-Zero-Math step_300, DAPO 500 only
+
+Per plan predictions 13 and 14. Same task and settings; DAPO only.
+
+```
+sky launch -c nc-sft     skypilot/run.yaml --gpus B200:1 --retry-until-up -i 20 --down -y -d --env HF_TOKEN \
+    --env MODEL=allenai/Olmo-3-7B-Think-SFT --env RUN_NAME=think-sft --env PROMPTS="prompts/dapo_sample500.jsonl"
+sky launch -c nc-zero300 skypilot/run.yaml --gpus B200:1 --retry-until-up -i 20 --down -y -d --env HF_TOKEN \
+    --env MODEL=allenai/Olmo-3-7B-RL-Zero-Math --env REVISION=step_300 --env RUN_NAME=rlzero-math-step300 \
+    --env PROMPTS="prompts/dapo_sample500.jsonl"
+```
+
+RL-Zero-Math step branches on the Hub run `step_100` to `step_1900` (the
+plan's earlier count of 19 undercounted; `main` is the final checkpoint).
+Compliance and accuracy of step_300 are to be checked before its rate is
+compared.
