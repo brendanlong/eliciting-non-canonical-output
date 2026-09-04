@@ -268,6 +268,54 @@ ideal but more defensible. The AIME cells will add evidence, with the
 caveat that the same data must not be compared in different ways until
 something comes out significant.
 
-Prediction status for this cell: not yet, Think RL final at 500 prompts is
-still running; the pilot's 50-prompt Think number is on a different prompt
-sample and is listed for orientation only.
+### DAPO 500, Think RL final (completes the DAPO comparison)
+
+`Olmo-3-7B-Think` @ `main`, same prompts and settings. 500 rollouts: 493
+stop, 7 length; think closed 495 / 500; accuracy (finished, parsed) 98.8%;
+excluded 5 tokens incomplete UTF-8, 28 cut last word. Length: mean 9,299,
+median 8,077, p90 15,702, max 32,767.
+
+| checkpoint | units | non-canonical | **rate** | segmentation only | spans | fragments | rollouts with ≥1 event | span shapes (whitespace / alphabetic / symbolic) |
+|---|--:|--:|--:|--:|--:|--:|--:|---|
+| Think RL final | 4,649,360 | 160 | **0.0034%** | 155 / 4,649,355 = 0.0033% | 108 | 5 | 51 / 500 | 1 / 25 / 82 |
+
+Think 153 / 4,364,900 (0.0035%), answer 7 / 284,517 (0.0025%). Entropy
+(top-10, nats): all positions 0.354, at non-canonical positions 0.472.
+The pilot's 50-prompt Think number on the older sample was 0.0037%.
+
+**Tests per the analysis specification in the plan** (DAPO vs DAPO;
+per-token = two-proportion z on pooled counts; per-rollout = permutation
+test with rollouts as units, 5,000 permutations, so p < 0.0002 reads as
+0/5,000; rollout-bootstrap 95% CIs):
+
+| comparison | headline rule: difference | per-token z, p | per-rollout p | segmentation only: difference | per-token z, p | per-rollout p |
+|---|--:|---|--:|--:|---|--:|
+| Think RL final − Think-DPO | −0.0152 pp | 21.8, <1e-15 | <0.0002 | −0.0127 pp | 19.4, <1e-15 | <0.0002 |
+| Think RL final − RL-Zero-Math | −0.0203 pp | 25.8, <1e-15 | <0.0002 | −0.0204 pp | 25.9, <1e-15 | <0.0002 |
+| RL-Zero-Math − Think-DPO | +0.0052 pp | 4.8, 1.9e-6 | 0.055 | +0.0077 pp | 7.4, 1.9e-13 | 0.0016 |
+
+Rollout-bootstrap 95% CIs, headline rule: Think RL final 0.0019–0.0059%,
+Think-DPO 0.0164–0.0210%, RL-Zero-Math 0.0189–0.0297%.
+
+**Prediction status (DAPO cell).** Prediction 3 (on-policy RL raises the
+rate; Think RL final > Think-DPO): **refuted in this cell** — the RL final
+checkpoint is about 5× below its DPO starting point under either
+convention, at every reported p. The exclusively-on-policy model
+(RL-Zero-Math) is above both Think checkpoints per-token, and above DPO
+per-rollout at p = 0.055 (headline) / 0.0016 (segmentation only).
+Prediction 4 (SFT ≈ DPO) is untested (no SFT cell yet). Prediction 5
+(higher inside the CoT): Think RL final 0.0035% think vs 0.0025% answer,
+DPO 0.0196% vs 0.0079% (descriptive). Prediction 11 (word joins grow with
+RL): the alphabetic-span count is 25 for RL final vs 69 for DPO
+(descriptive).
+
+### AIME 2024/2025 (60 problems × 8 samples), RL-Zero-Math
+
+480 rollouts: 477 stop, 3 length; accuracy 34.9% (1 unparsed); excluded 1
+incomplete UTF-8, 39 cut last word. Length: mean 11,229, median 11,560,
+p90 16,924, max 32,766. Headline rate **0.0273%** (1,470 of 5,389,285
+units; 939 spans, 1 fragment; 323 / 480 rollouts with ≥1 event; shapes
+whitespace 30 / alphabetic 431 / symbolic 478); segmentation only 0.0273%.
+Entropy 0.397 all positions, 0.687 at non-canonical positions. DAPO for
+the same checkpoint: 0.0238%. The Think and DPO AIME cells are still
+running.

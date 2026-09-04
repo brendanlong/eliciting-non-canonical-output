@@ -326,6 +326,17 @@ between them, e.g. `above`+`x`, `as`+`y`, `of`+`t`):
     heuristics separate "incomprehensible but canonical" from
     non-canonical, which this prediction needs.
 
+## Analysis specification for the full run (Brendan, 2026-09-03, written after the DPO and Zero DAPO cells and before the Think and AIME cells were analysed)
+
+The pre-registered test was per-token, which is also the one judged
+implausibly strong because events cluster within rollouts. Report both:
+the per-token test and the per-rollout test, comparing DAPO to DAPO and
+AIME to AIME (never pooled), for each pair of checkpoints, under the
+headline counting rule and the segmentation-only rate. Report every
+p-value and let the reader decide what to believe. Everything else
+(think vs answer, length, position, span shapes, digits, entropy) is
+descriptive.
+
 ## Deferred and out of scope for v1
 
 - **Elicitation** (prompting models into non-canonical output). Planned
