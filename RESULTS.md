@@ -771,9 +771,9 @@ there is no bare-space-then-tail span class in any Tulu cell, which was
 the whole of the OLMo-3 DPO excess.
 
 *Notes from Claude:* Tulu's DPO and OLMo-3's DPO are not the same recipe
-(Tulu 3 used length-normalized DPO on off-policy preference pairs; OLMo 3
-Instruct-DPO used the Dolci preference data with the Delta Learning
-approach), and Tulu's RLVR prompts (GSM8K, MATH, IF constraints) are much
+(Tulu 3: length-normalized DPO on GPT-4o-judged pairs; OLMo 3 Instruct:
+the Dolci preference mixture; the loss variants and data differ), and
+Tulu's RLVR prompts (GSM8K, MATH, IF constraints) are much
 easier than DAPO, which the 4–20% accuracy reflects. The family's rates
 are also all low enough (20–40 events per cell outside the degenerate
 rollouts) that a 2× difference would not be detectable at this sample
