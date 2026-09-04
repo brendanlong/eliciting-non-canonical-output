@@ -56,7 +56,8 @@ Title
    5.2 RL-Zero over checkpoints (Fig 2; pending)
    5.3 How much survives realistic sampling: recommended settings + where spans start (Fig 3)
    5.4 Robustness: length control, DAPO vs AIME, correct-only (Fig 4)
-   5.5 Contagion, KL and logit lens after a non-canonical token (Fig 5; pending)
+   5.5 Does one event make the next more likely? (clustering; Fig 5)
+   5.6 What does a span do to the computation afterwards? (divergence; Fig 6; rerun pending)
 6. What I think is going on (hypotheses, and what would separate them)
 7. Limitations
 8. Time spent and AI use
@@ -97,7 +98,15 @@ at least one non-canonical event, 500 rollouts per cell):
   from the rest early but has no power for the short Instruct-SFT and Tulu
   cells. AIME is higher than DAPO overall and indistinguishable within the
   first 1,024 tokens, consistent with (not proof of) a length effect.
-- Contagion / logit-lens result: pending.
+- Events cluster within rollouts, but for two different reasons: in the
+  on-policy RL cells the excess is the same span recurring (84% of
+  consecutive events in Think RL final repeat the same text), while in
+  Think-DPO events of different text still sit closer than random
+  placement (p < 0.0005).
+- A span changes the next-token distribution where it happens (argmax
+  differs for 15–36% of spans in the OLMo-3 cells) and the effect is gone
+  within about 16 tokens; so a re-tokenized transcript is wrong locally,
+  not globally. First-build numbers; the full-prefix rerun is pending.
 
 ### 2. Random examples
 
@@ -213,8 +222,8 @@ Text facts:
 
 ### 5.2 RL-Zero over checkpoints (pending)
 
-Figure 2: % rollouts flagged vs RL step, with the two existing points and
-whichever of the step_100–step_1900 branches the pending runs cover. If the curve is monotone, say so; if it is not,
+Figure 2: % rollouts flagged vs RL step, with steps 300 and 2000 measured
+and steps 600, 1,000, 1,400 and 1,800 launched on 2026-09-04. If the curve is monotone, say so; if it is not,
 say that too.
 
 ### 5.3 What survives realistic sampling
@@ -271,12 +280,95 @@ are not a length artefact.
   reporting it as "ordering robust to conditioning on correctness" rather
   than as a null result on prediction 9.
 
-### 5.5 Contagion (pending)
+### 5.5 Does one event make the next more likely?
 
-Placeholder for: rate of further non-canonical tokens after the first one
-vs a matched position in clean rollouts; KL between the distribution after
-the emitted IDs and after the canonical re-tokenization of the same text;
-logit-lens agreement at those positions.
+Source: `noncanon.clustering` table under "Follow-ups after the main
+result" in `RESULTS.md`. DAPO 500, temperature 1. Four measurements, and
+the writeup should say why there are four: propensity (some rollouts are
+prone) and contagion (one event raises the chance of the next) both
+produce clustering and need separating.
+
+Figure 5: per cell, observed vs shuffled median gap between consecutive
+events, all pairs and different-text pairs side by side. Or a simpler
+paired bar of P(another event within 64 tokens) observed vs depth-matched
+baseline.
+
+- Propensity: the large cells have about as many ≥2-event rollouts as a
+  Poisson process at the cell's rate given each rollout's length
+  (Think-DPO 119 vs 118 expected, Instruct-DPO 37 vs 32) or fewer
+  (RL-Zero step 2000 88 vs 130). Events are not concentrated in prone
+  rollouts beyond what length predicts. Small cells exceed it
+  (Tulu-3-SFT 9 vs 3), which is the word-salad rollouts.
+- Hazard: P(another event within 64 tokens | event) exceeds the
+  depth-matched baseline in 11 of 12 cells, by a lot in the on-policy RL
+  cells (Think RL final 32% vs 0.1%, RL-Zero step 2000 18% vs 3%) and by
+  little in the DPO cells (Think-DPO 2.0% vs 1.3%). The baseline does not
+  condition on the rollout having any event, so this includes propensity.
+- Gaps: consecutive events sit closer than random placement within the
+  same rollout in 9 of 12 cells. Restricting to consecutive events with
+  different span text splits the story: in Think RL final (84% of
+  consecutive events repeat the same text) and RL-Zero step 2000 (41%)
+  the clustering disappears (p = 0.33 and 0.58); in Think-DPO it stays
+  (1,019 vs 1,725 tokens, p < 0.0005; its 18% repeats are almost all byte
+  fragments, 41 of 43) and in Tulu-3-SFT too (47 vs 111, p < 0.0005).
+- Reading for the writeup: for the on-policy RL checkpoints, "contagion"
+  is a learned tokenization habit repeating (the ` $`+`($` span appears
+  213 times in RL-Zero step 2000), not a destabilised rollout. For
+  Think-DPO, different-text events cluster beyond what count and length
+  predict, which is consistent with either a local state (a stretch where
+  the tail gets sampled more) or true contagion; section 5.6 is the
+  direct test.
+- Caveat: the 64-token baseline controls for depth but not prompt, and
+  for rare-event cells rests on few draws.
+
+### 5.6 What does a span do to the computation afterwards?
+
+Source: `noncanon.divergence` tables in the same section. **Status: the
+numbers on main are from the first build (commit ada2362), which
+truncated the prefix to the last 4,096 tokens and spliced it; a
+full-prefix rerun of all 12 cells is in progress.** Either wait for the
+rerun before writing this section or label the numbers as the first
+build. Do not mix the two.
+
+Method to state: for each span, two teacher-forced passes over the same
+text, the emitted IDs (A) and the canonical re-tokenization of the decoded
+text (B), identical up to the span; at every byte boundary after the span
+that both tokenizations share, KL(A‖B) between the next-token
+distributions, whether the argmax differs, and at layers 4, 8, ..., 28 the
+logit-lens KL and residual cosine distance. At most 3 spans per rollout,
+400 per cell; spans with another event inside the 512-token window
+skipped.
+
+Figure 6: fraction of boundaries where the argmax differs (and median KL)
+vs distance after the span, one line per OLMo-3 cell, log-x. Second
+panel: logit-lens KL by layer for boundaries within 16 tokens.
+
+First-build numbers:
+
+- At the span's end the argmax differs for 36% of Think-DPO spans, 31%
+  Think-SFT, 23% Think RL final, 15% RL-Zero step 2000 (11% at step 300),
+  21–31% on the Instruct ladder; median KL 0.008–0.30 nats in the OLMo-3
+  cells.
+- Decay: by 5–16 tokens after the span the argmax differs at 2.4–4.5% of
+  boundaries in the OLMo-3 cells; from 17 tokens on, 0.3–1.7% with median
+  KL below 0.001.
+- Logit lens near the span: KL and residual cosine distance are largest
+  at layers 24–28 in six of the eight OLMo-3 cells (Think-SFT and RL-Zero
+  step 2000 peak at layer 4).
+- Tulu cells have 8–17 spans and are too small to read beyond the same
+  fast decay.
+- Caveat to state: beyond the span the two sequences differ in position
+  index (the canonical span usually has a different token count), which
+  is a plausible source of the far-field floor.
+
+Reading for the writeup: this is the number the title question turns on.
+Running a probe or logit lens on a text transcript gives the wrong
+distribution at the span itself, in a quarter to a third of cases a
+different argmax, and is back in agreement within about 16 tokens. So
+the interpretability damage is local to the span, not a corrupted
+rollout. Pair that with the rate numbers: at recommended settings the
+shipped Think model has a span in 2% of ~9k-token rollouts, so per token
+the exposure is tiny; at DPO or RL-Zero checkpoints it is not.
 
 ### 6. What I think is going on
 
@@ -312,7 +404,10 @@ Keep the draft's three; add:
 - DAPO held-out set skews easy; AIME sampled 8× per problem with
   within-problem correlation.
 - Correct-vs-incorrect underpowered in the Think track.
-- The RL-Zero curve is two points until the pending checkpoints land.
+- The RL-Zero curve is two points until steps 600–1,800 land.
+- The divergence numbers are from a truncated-prefix build; the
+  full-prefix rerun may move them.
+- Clustering's depth-matched baseline does not control for prompt.
 
 ### 8. Time spent and AI use
 
