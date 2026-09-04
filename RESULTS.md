@@ -78,6 +78,10 @@ budget 119,312 tokens, max concurrency 6.65 at 34,816 tokens):
 **Rollout length and outcome** (measured tokens exclude the trailing stop
 token; excluded as incomplete UTF-8: 0 in both arms; excluded as the cut
 last word of a truncated rollout: 3 tokens in the recommended arm):
+(Unit counts throughout this file were recomputed on 2026-09-04 after the
+cut-last-word exclusion was capped at 8 tokens — see the Think
+recommended-settings cell — and only unit and excluded-token counts
+moved; no rate, CI or p-value changed at the reported precision.)
 
 | arm | mean | median | p90 | max | finish | think closed | verified correct |
 |---|--:|--:|--:|--:|---|---|---|
@@ -275,12 +279,12 @@ something comes out significant.
 
 `Olmo-3-7B-Think` @ `main`, same prompts and settings. 500 rollouts: 493
 stop, 7 length; think closed 495 / 500; accuracy (finished, parsed) 98.8%;
-excluded 5 tokens incomplete UTF-8, 28 cut last word. Length: mean 9,299,
+excluded 5 tokens incomplete UTF-8, 24 cut last word. Length: mean 9,299,
 median 8,077, p90 15,702, max 32,767.
 
 | checkpoint | units | non-canonical | **rate** | segmentation only | spans | fragments | rollouts with ≥1 event | span shapes (whitespace / alphabetic / symbolic) |
 |---|--:|--:|--:|--:|--:|--:|--:|---|
-| Think RL final | 4,649,360 | 160 | **0.0034%** | 155 / 4,649,355 = 0.0033% | 108 | 5 | 51 / 500 | 1 / 25 / 82 |
+| Think RL final | 4,649,364 | 160 | **0.0034%** | 155 / 4,649,359 = 0.0033% | 108 | 5 | 51 / 500 | 1 / 25 / 82 |
 
 Think 153 / 4,364,900 (0.0035%), answer 7 / 284,517 (0.0025%). Entropy
 (top-10, nats): all positions 0.354, at non-canonical positions 0.472.
@@ -315,8 +319,8 @@ RL): the alphabetic-span count is 25 for RL final vs 69 for DPO
 ### AIME 2024/2025 (60 problems × 8 samples), RL-Zero-Math
 
 480 rollouts: 477 stop, 3 length; accuracy 34.9% (1 unparsed); excluded 1
-incomplete UTF-8, 39 cut last word. Length: mean 11,229, median 11,560,
-p90 16,924, max 32,766. Headline rate **0.0273%** (1,470 of 5,389,285
+incomplete UTF-8, 18 cut last word. Length: mean 11,229, median 11,560,
+p90 16,924, max 32,766. Headline rate **0.0273%** (1,470 of 5,389,306
 units; 939 spans, 1 fragment; 323 / 480 rollouts with ≥1 event; shapes
 whitespace 30 / alphabetic 431 / symbolic 478); segmentation only 0.0273%.
 Entropy 0.397 all positions, 0.687 at non-canonical positions. DAPO for
@@ -328,9 +332,9 @@ per-rollout p = 0.38. The Think and DPO AIME cells are still running.
 ### AIME 2024/2025, Think-DPO
 
 480 rollouts: 434 stop, 46 length; think closed 433 / 480; accuracy
-(finished, parsed) 80.7%; excluded 165 tokens incomplete UTF-8, 166 cut
+(finished, parsed) 80.7%; excluded 165 tokens incomplete UTF-8, 144 cut
 last word. Length: mean 17,384, median 14,779, p90 32,539, max 32,767.
-Headline rate **0.0177%** (1,474 of 8,344,375 units; 757 spans, 157
+Headline rate **0.0177%** (1,474 of 8,344,397 units; 757 spans, 157
 fragments of which 156 standalone; 330 / 480 rollouts with ≥1 event; shapes
 whitespace 301 / alphabetic 222 / symbolic 234); segmentation only 0.0158%
 (1,318 / 8,344,219). Think 1,422 / 7,961,992 (0.0179%), answer 52 / 382,429
@@ -503,9 +507,9 @@ falls back.
 ### AIME 2024/2025, Think RL final (completes the AIME comparison)
 
 480 rollouts: 426 stop, 54 length; think closed 428 / 480; accuracy
-(finished, parsed) 78.6%; excluded 8 tokens incomplete UTF-8, 148 cut last
+(finished, parsed) 78.6%; excluded 8 tokens incomplete UTF-8, 132 cut last
 word. Length: mean 19,127, median 18,550, p90 32,761, max 32,767. Headline
-rate **0.0039%** (355 of 9,180,693 units; 201 spans, 8 fragments; 110 / 480
+rate **0.0039%** (355 of 9,180,709 units; 201 spans, 8 fragments; 110 / 480
 rollouts with ≥1 event; shapes whitespace 1 / alphabetic 103 / symbolic
 97); segmentation only 0.0038%. Think 353 / 8,916,561 (0.0040%), answer
 2 / 264,186 (0.0008%). Entropy 0.423 all positions, 0.910 at non-canonical
@@ -536,6 +540,71 @@ none of the within-model differences is distinguishable at the rollout
 level. Prediction 5 (higher inside the CoT), descriptive: Think RL final
 think 0.0040% vs answer 0.0008% on AIME, 0.0035% vs 0.0025% on DAPO;
 DPO 0.0179% vs 0.0136% on AIME.
+
+### DAPO 500, Think RL final at the recommended settings (prediction 15)
+
+`allenai/Olmo-3-7B-Think` @ `main`, temperature 0.6 / top-p 0.95 (the
+checkpoint's `generation_config.json`), otherwise as the untruncated cell;
+B200, 1,495 output tokens/s. 500 rollouts: 494 stop, 6 length; think
+closed 495 / 500; accuracy (finished, parsed) 99.4%; excluded 0 tokens
+incomplete UTF-8, 19 cut last word. Length: mean 8,897, median 7,552, p90
+15,203, max 32,767.
+
+| Think RL final, DAPO 500 | units | non-canonical | rate | 95% CI | spans | rollouts with ≥1 event | shapes (ws / alpha / sym) |
+|---|--:|--:|--:|---|--:|--:|---|
+| untruncated (1.0 / 1.0) | 4,649,364 | 160 | 0.0034% | 0.0019–0.0059% | 108 | 51 / 500 | 1 / 25 / 82 |
+| recommended (0.6 / 0.95) | 4,477,830 | 34 | **0.0008%** | 0.0003–0.0013% | 17 | 10 / 500 | 0 / 11 / 6 |
+
+Recommended − untruncated: −0.0027 pp, per-token z = 8.8 (p = 2e-18),
+per-rollout permutation p = 0.0001 (3 / 20,000); segmentation only
+identical (no fragments in the recommended arm). Think 30 / 4,162,998
+(0.0007%), answer 4 / 285,300 (0.0014%). Entropy 0.304 all positions,
+0.707 at non-canonical positions. Of the 17 spans, 14 begin at the argmax
+token, 2 at rank 2–3, 1 at rank 4–10, none beyond the top-10; the sampler
+reached beyond the top-10 at 0.0% of positions (93.7% of samples were the
+argmax).
+
+**Prediction status.** Prediction 15 (does the rate hit exactly 0 at the
+recommended settings?): **no** — 34 units in 4.48M, 10 of 500 rollouts,
+about 4× below the untruncated cell. The pilot's 0 in 468k was consistent
+with this rate (expected ≈ 3.6 events). Prediction 16 (DPO at the
+recommended settings; possible reversal) is pending that cell.
+
+**Cut-last-word fix (2026-09-04).** This cell exposed a flaw in the
+truncated-rollout exclusion: it dropped everything back to the last
+whitespace-starting token, which for a truncated Chinese passage or a
+symbol loop with no whitespace token was thousands of tokens (29,553 in
+this cell's 6 truncated rollouts). The look-back is now capped at 8
+tokens. All cells were recomputed; only unit and excluded-token counts
+changed (this cell's units 4,448,296 → 4,477,830), no rate, CI or p at the
+reported precision.
+
+### Where spans start, all cells so far (from `noncanon.tail`)
+
+Spans per million sampled tokens whose first token was the model's argmax
+(rank 1) versus sampled from beyond the stored top-10, with the
+distribution's sharpness. Byte fragments excluded. DPO's argmax figure is
+dominated by its bare-space spans (space at p ≈ 1, deviation in the next
+token); the figure excluding them is in brackets.
+
+| cell (DAPO 500) | spans | argmax-start spans per 1M argmax samples | tail-start spans per 1M samples beyond top-10 | samples beyond top-10 | mass beyond top-10 | mean entropy (top-10) |
+|---|--:|--:|--:|--:|--:|--:|
+| Think-SFT | 71 | 10.9 | 166.5 | 1.2% | 0.0122 | 0.615 |
+| Think-DPO | 403 | 85.7 (25.9) | 1,847.5 | 0.5% | 0.0050 | 0.338 |
+| Think RL final | 108 | 21.4 | 288.0 | 0.2% | 0.0024 | 0.379 |
+| Think RL final, recommended | 17 | 3.3 | — (never sampled) | 0.0% | 0.0012 | 0.314 |
+| RL-Zero-Math step 300 | 166 | 31.1 | 856.8 | 0.5% | 0.0048 | 0.433 |
+| RL-Zero-Math step 2000 | 543 | 157.3 | 1,358.1 | 0.3% | 0.0031 | 0.368 |
+
+Reading these against the two-process hypothesis in the plan
+(descriptive): within the Zero run the argmax-start rate rises 5× from
+step 300 to step 2000 and the tail-start rate 1.6×; within the Think
+ladder the argmax-start rate goes SFT 10.9 → DPO 25.9 (bare-space spans
+excluded) → RL final 21.4, and the tail-start rate 166 → 1,848 → 288.
+SFT is the least sharp checkpoint by every measure (1.2% of samples
+beyond the top-10, entropy 0.615) and has the lowest tail-start span rate,
+so a flatter tail alone does not produce spans; DPO's tail samples are
+non-canonical 11× more often than SFT's.
 
 ## Reproduction
 
@@ -599,12 +668,14 @@ uv run python -m noncanon.compare out/think-sft/dapo_sample500 out/think-main/da
 uv run python -m noncanon.compare out/think-main/dapo_sample500 out/think-main/aime_2024_2025
 uv run python -m noncanon.compare out/think-dpo/aime_2024_2025 out/think-main/aime_2024_2025
 uv run python -m noncanon.compare out/rlzero-math/aime_2024_2025 out/think-main/aime_2024_2025
+uv run python -m noncanon.compare out/think-main/dapo_sample500 out/think-main-recommended/dapo_sample500
 ```
 
 Tail depth, emitted-token ranks and bare-space spans:
 
 ```
-uv run python -m noncanon.tail --tokenizer allenai/Olmo-3-7B-Think out/think-main/dapo_sample500 out/think-dpo/dapo_sample500 out/rlzero-math/dapo_sample500
+uv run python -m noncanon.tail --tokenizer allenai/Olmo-3-7B-Think out/think-main/dapo_sample500 out/think-dpo/dapo_sample500 out/rlzero-math/dapo_sample500 \
+    out/think-sft/dapo_sample500 out/rlzero-math-step300/dapo_sample500 out/think-main-recommended/dapo_sample500
 ```
 
 The prompt-set overlap with the OLMo-3 RL training data is computed inside
