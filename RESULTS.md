@@ -370,7 +370,27 @@ non-canonical span (byte fragments excluded):
 
 Share of all sampled tokens at rank 1 is 86–88% for all three. Under
 temperature 1 sampling, about three quarters of spans begin with the
-model's argmax token in every checkpoint. For orientation against the
+model's argmax token in every checkpoint.
+
+**Refinement: spans that begin with a bare space token.** In this
+tokenizer a standalone space token is canonical only before a digit
+(digits are pre-tokenized separately), so a bare space followed by a
+non-digit is a span whose first token is innocuous and whose second token
+is the deviation. DPO has 231 such spans (of 403); the token after the
+space is at rank >10 in 81% of them (rank 1 in 3%); the most common
+followers are a partial multi-byte character (18), `.` (16), `**` (7). Its
+other 172 spans start at rank 1 in 54% and rank >10 in 22%. Think RL
+final has 1 bare-space span and 107 others (80% rank 1, 3% rank >10);
+RL-Zero-Math has 2 and 541 others (79% rank 1, 2% rank >10).
+
+**Random examples** (context … emitted → canonical; p = probability of
+the first emitted token; for tail cases, the model's top choice):
+
+Think RL final, argmax-start: `The image link is to a cdn` `' art'`,`'of'` → `' ar'`,`'to'`,`'f'` (p 0.29); `factor the left-hand side` `'.'`,`'Rew'` → `'.R'`,`'ew'` (1.00); `r)(-s) = - (` `'t'`,`'rs'` → `'trs'` (0.68); `But W` `'_g'`,`'b'` → `'_gb'` (1.00); `based on案` `'例'`,`'如'` → `'例如'` (0.98). Tail-start: `or else the set` `' is'`,`'nt'` → `' isnt'` (rank 2, p 0.29; top `' isn'` 0.69); `which` `' simpl'`,`'ates'` → `' sim'`,`'plates'` (rank 2; top `' gives'` 0.73); `starts with 2.` `'abc'`,`'def'` → `'abcdef'` (rank 5, p 0.02; top `' followed'` 0.47).
+
+Think-DPO, argmax-start (all bare-space): `15m + b =` `' '`,`'lic'` → `' lic'` (p 1.00); `is at most` `' '`,`'Counter'` → `' Counter'` (1.00); `legs of length 3 and` `' '`,`'.'` → `' .'` (1.00); `6k+2,` `' '`,`'-P'`,`'Finding'` → `' -'`,`'PF'`,`'inding'` (1.00). Tail-start: `counter BAL` `'ANC'`,`'Ed'` → `'ANCE'`,`'d'` (rank 4, p 0.001; top `'ANCED'` 0.98); `t_n = 1 +` `' Chronic'`,`'hidden'` → `' Chron'`,`'ich'`,`'idden'` (rank 11; top `'2'` 0.97); `So that cross` `'-bot'`,`'ton'` → `'-b'`,`'otton'` (rank 11; top `'-check'` 0.91).
+
+RL-Zero-Math, argmax-start: `tag, in` `' $'`,`'($'` → `' $($'` (p 1.00, ×213); `which is original` `' term'`,`'m'` → `' ter'`,`'mm'` (0.99); `answer ask` `' for'`,`'k'` → `' fork'` (0.37); `We need to` `' compute'`,`'x'` → `' comput'`,`'ex'` (0.50). Tail-start: `Expand the second term:` `'(b'`,`'ig'` → `'(big'` (rank 2; top `'Multiply'` 0.54); `Alternatively,` `' plot'`,`'ting'` → `' plotting'` (rank 3, p 0.17; top `' plotting'` 0.31); `Total P` `'+'`,`'E'` → `'+E'` (rank 2; top `'+E'` 0.69). For orientation against the
 recommended-settings pilot (Think RL final, temperature 0.6 / top-p 0.95,
 50 prompts): 21 rank-1 spans per million samples would predict about 9
 spans in its 468k tokens if rank-1 events were independent of the
