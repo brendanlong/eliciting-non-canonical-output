@@ -250,15 +250,17 @@ another 30.
 
 **DPO vs Zero, rollouts as the unit** (events cluster, so token-level
 tests overstate certainty). Headline rule (fragments counted):
-rollout-bootstrap 95% CIs DPO 0.0164–0.0211%, Zero 0.0189–0.0297%;
+rollout-bootstrap 95% CIs DPO 0.0164–0.0210%, Zero 0.0189–0.0298%;
 permutation test on the pooled rate with rollouts permuted: Zero − DPO =
-0.0052 pp, two-sided p = 0.053 (`noncanon.compare`; an earlier inline run
-of the same test gave 0.057 and 0.055 from a different RNG stream). Segmentation only: CIs DPO 0.0142–0.0179%,
-Zero 0.0189–0.0296%; Zero − DPO = 0.0077 pp, p = 0.0016.
+0.0052 pp, two-sided p = 0.060 (`noncanon.compare`, 20,000 permutations;
+earlier inline runs of the same test with 5,000 permutations and other RNG
+streams gave 0.053–0.057). Segmentation only: CIs DPO 0.0141–0.0180%,
+Zero 0.0188–0.0295%; Zero − DPO = 0.0077 pp, p = 0.0023.
 Rollouts with ≥1 span: 50.2% vs 58.0%, z = 2.5. Spans per rollout: DPO mean
 0.81, variance 1.15, max 8; Zero mean 1.09, variance 8.63, max 52. Median
 per-rollout rate: DPO 0.0052%, Zero 0.0138%. Dropping Zero's two densest
-rollouts: Zero 0.0206%, difference 0.0046 pp, p = 0.011. (Token-level
+rollouts: Zero 0.0206%, difference 0.0046 pp, p = 0.011 (inline run,
+5,000 permutations; not part of the specification). (Token-level
 Poisson z ignoring clustering: 7.4.)
 
 Brendan's note (2026-09-03) on the two conventions: byte fragments and
@@ -286,24 +288,24 @@ The pilot's 50-prompt Think number on the older sample was 0.0037%.
 
 **Tests per the analysis specification in the plan** (DAPO vs DAPO;
 per-token = two-proportion z on pooled counts; per-rollout = permutation
-test with rollouts as units, 5,000 permutations, so p < 0.0002 reads as
-0/5,000; rollout-bootstrap 95% CIs):
+test with rollouts as units, 20,000 permutations, so p < 0.00005 reads as
+0/20,000; z is reported unsigned here, its sign follows the difference; rollout-bootstrap 95% CIs):
 
 | comparison | headline rule: difference | per-token z, p | per-rollout p | segmentation only: difference | per-token z, p | per-rollout p |
 |---|--:|---|--:|--:|---|--:|
-| Think RL final − Think-DPO | −0.0152 pp | 21.8, <1e-15 | <0.0002 | −0.0127 pp | 19.4, <1e-15 | <0.0002 |
-| Think RL final − RL-Zero-Math | −0.0203 pp | 25.8, <1e-15 | <0.0002 | −0.0204 pp | 25.9, <1e-15 | <0.0002 |
-| RL-Zero-Math − Think-DPO | +0.0052 pp | 4.8, 1.9e-6 | 0.053 | +0.0077 pp | 7.4, 1.9e-13 | 0.0016 |
+| Think RL final − Think-DPO | −0.0152 pp | 21.8, 2e-105 | <0.00005 | −0.0127 pp | 19.4, 5e-84 | <0.00005 |
+| Think RL final − RL-Zero-Math | −0.0203 pp | 25.8, 8e-147 | <0.00005 | −0.0204 pp | 25.9, 3e-148 | <0.00005 |
+| RL-Zero-Math − Think-DPO | +0.0052 pp | 4.8, 1.9e-6 | 0.060 | +0.0077 pp | 7.4, 1.9e-13 | 0.0023 |
 
 Rollout-bootstrap 95% CIs, headline rule: Think RL final 0.0019–0.0059%,
-Think-DPO 0.0164–0.0210%, RL-Zero-Math 0.0189–0.0297%.
+Think-DPO 0.0164–0.0210%, RL-Zero-Math 0.0189–0.0298%.
 
 **Prediction status (DAPO cell).** Prediction 3 (on-policy RL raises the
 rate; Think RL final > Think-DPO): **refuted in this cell** — the RL final
 checkpoint is about 5× below its DPO starting point under either
 convention, at every reported p. The exclusively-on-policy model
 (RL-Zero-Math) is above both Think checkpoints per-token, and above DPO
-per-rollout at p = 0.055 (headline) / 0.0016 (segmentation only).
+per-rollout at p = 0.060 (headline) / 0.0023 (segmentation only).
 Prediction 4 (SFT ≈ DPO) is untested (no SFT cell yet). Prediction 5
 (higher inside the CoT): Think RL final 0.0035% think vs 0.0025% answer,
 DPO 0.0196% vs 0.0079% (descriptive). Prediction 11 (word joins grow with
@@ -320,7 +322,7 @@ whitespace 30 / alphabetic 431 / symbolic 478); segmentation only 0.0273%.
 Entropy 0.397 all positions, 0.687 at non-canonical positions. DAPO for
 the same checkpoint: 0.0238%. Within-model AIME − DAPO (per the spec):
 headline +0.0035 pp, per-token z = 3.0 (p = 0.002), per-rollout
-permutation p = 0.41; segmentation only +0.0036 pp, z = 3.1 (p = 0.002),
+permutation p = 0.39; segmentation only +0.0036 pp, z = 3.1 (p = 0.002),
 per-rollout p = 0.38. The Think and DPO AIME cells are still running.
 
 ### AIME 2024/2025, Think-DPO
@@ -340,8 +342,8 @@ Within-model AIME − DAPO for DPO: headline −0.0010 pp, per-token z = 1.2
 (p = 0.78), per-rollout p = 0.88.
 
 AIME, RL-Zero-Math − Think-DPO: headline +0.0096 pp, per-token z = 11.9
-(p < 1e-15), per-rollout p < 0.0002; segmentation only +0.0115 pp,
-z = 14.6, per-rollout p < 0.0002. (The AIME Think cell is still running.)
+(p = 2e-32), per-rollout p < 0.00005; segmentation only +0.0115 pp,
+z = 14.6 (p = 5e-48), per-rollout p < 0.00005. (The AIME Think cell is still running.)
 
 ### Next-token distribution sharpness, DAPO 500 (from the stored top-10 logprobs)
 
@@ -450,9 +452,9 @@ incorrect 0.0332% (52), truncated 0 (1), unparsed 0.0145% (1). Both
 checkpoints finish, attempt and mostly solve the problems at the same
 rollout lengths, so the rate difference is not a compliance difference.
 
-Rollout-bootstrap 95% CI for step_300: 0.0043–0.0161%. step 2000 − step
-300 = +0.0153 pp; per-token z = 15.1 (p < 1e-15); per-rollout permutation
-p < 0.0002 (identical under segmentation only: no fragments at step 300).
+Rollout-bootstrap 95% CI for step_300: 0.0043–0.0157%. step 2000 − step
+300 = +0.0153 pp; per-token z = 15.1 (p = 1e-51); per-rollout permutation
+p < 0.00005 (identical under segmentation only: no fragments at step 300).
 Entropy (top-10): 0.411 all positions, 0.883 at non-canonical positions.
 
 Span patterns at step_300: word-plus-variable joins dominate (`' where'`,`'x'`
@@ -487,8 +489,8 @@ The Think ladder on DAPO 500, headline rule:
 | DPO | 0.0186% | 0.0164–0.0210% | 275 / 500 |
 | RL final | 0.0034% | 0.0019–0.0058% | 51 / 500 |
 
-SFT − DPO: −0.0156 pp, per-token z = 21.6 (p < 1e-15), per-rollout
-p < 0.0002 (segmentation only: −0.0131 pp, z = 19.3, p < 0.0002).
+SFT − DPO: −0.0156 pp, per-token z = 21.6 (p = 4e-103), per-rollout
+p < 0.00005 (segmentation only: −0.0131 pp, z = 19.3, p < 0.00005).
 SFT vs RL final: +0.0005 pp, per-token z = 1.2 (p = 0.24), per-rollout
 p = 0.86 (segmentation only: z = 1.1, p = 0.27; per-rollout 0.88).
 
@@ -518,8 +520,8 @@ AIME, all three checkpoints, headline rule:
 | RL-Zero-Math | 0.0273% | 0.0222–0.0330% | 323 / 480 | 34.9% |
 
 Tests on AIME: RL final − DPO = −0.0138 pp, per-token z = 28.2, per-rollout
-p < 0.0002 (segmentation only −0.0120 pp, z = 25.8, p < 0.0002). RL final −
-Zero = −0.0234 pp, z = 38.5, per-rollout p < 0.0002 (segmentation only
+p < 0.00005 (segmentation only −0.0120 pp, z = 25.8, p < 0.00005). RL final −
+Zero = −0.0234 pp, z = 38.5, per-rollout p < 0.00005 (segmentation only
 −0.0235 pp, z = 38.8). Zero − DPO on AIME was reported above.
 
 Within-model AIME − DAPO for Think RL final: +0.0004 pp, per-token z = 1.2
@@ -549,6 +551,11 @@ uv run python -m noncanon.prompts dapo --sample 500   # prompts/dapo_heldout.jso
 uv run python -m noncanon.prompts aime                # prompts/aime_2024_2025.jsonl
 ```
 
+The pilot's `prompts/dapo_pilot50.jsonl` was drawn with the earlier
+`--pilot 50` flag from the earlier (whitespace-only) filter's 3,430-problem
+set and cannot be regenerated from the current filter; it is committed and
+stored with the pilot artifacts.
+
 Generation, one launch per cell (RunPod B200 via SkyPilot; `--gpus A100-80GB:1`
 works too, at about a quarter of the throughput). `PROMPTS` entries take an
 optional `:n` samples-per-prompt suffix; `ARMS` is `untruncated` (temperature
@@ -570,8 +577,11 @@ on-box copies uploaded by early runs were produced by earlier versions of
 `metrics.py` and are superseded by rerunning this):
 
 ```
-uv run python -m noncanon.metrics --tokenizer allenai/Olmo-3-7B-Think --records out/<run>/<prompt set>/*.parquet --out-dir out/<run>/<prompt set>/metrics
+uv run python -m noncanon.metrics --tokenizer allenai/Olmo-3-7B-Think --revision <revision> --records out/<run>/<prompt set>/*.parquet --out-dir out/<run>/<prompt set>/metrics
 ```
+
+(`--revision` matters only for step checkpoints such as `rlzero-math-step300`;
+the tokenizer is identical across the family.)
 
 Comparisons per the analysis specification (rollout-bootstrap CIs, per-token
 z, per-rollout permutation; both conventions):

@@ -45,20 +45,27 @@ def resolve_arms(names: list[str], gen_cfg: GenerationConfig) -> dict[str, dict]
     arms = {}
     for name in names:
         if name == "recommended":
-            assert gen_cfg.temperature is not None and gen_cfg.top_p is not None, (
-                "checkpoint's generation_config.json has no temperature/top_p; no recommended setting to use"
+            # GenerationConfig fills absent fields with class defaults (1.0), so
+            # look at what the checkpoint actually wrote.
+            explicit = gen_cfg.to_diff_dict()
+            assert "temperature" in explicit and "top_p" in explicit, (
+                "checkpoint's generation_config.json does not set temperature and top_p; no recommended setting to use"
             )
-            arms[name] = {"temperature": float(gen_cfg.temperature), "top_p": float(gen_cfg.top_p)}
+            arms[name] = {"temperature": float(explicit["temperature"]), "top_p": float(explicit["top_p"])}
         else:
             arms[name] = dict(ARMS[name])
     return arms
 
 
 def stop_token_ids(tok, gen_cfg: GenerationConfig) -> list[int]:
-    """EOS ids from generation_config, the tokenizer, and the chat template's turn end.
+    """Stop ids: generation_config EOS, tokenizer EOS, the chat template's
+    turn-end token, and <|im_end|> where the vocabulary has it.
 
-    Tulu's generation_config lists only <|end_of_text|> while its template
-    ends assistant turns with <|eot_id|>; RL-Zero ships no eos at all.
+    Think/Instruct list <|im_end|> and <|endoftext|> in generation_config.
+    RL-Zero ships no eos and its template has no special tokens at all, so
+    only the explicit <|im_end|> fallback covers its turn end. Tulu's
+    template uses plain-text role markers and ends turns with the EOS
+    <|end_of_text|>.
     """
     ids = set()
     eos = gen_cfg.eos_token_id
@@ -71,6 +78,9 @@ def stop_token_ids(tok, gen_cfg: GenerationConfig) -> list[int]:
     turn_end = [t for t in rendered if t in specials]
     if turn_end:
         ids.add(turn_end[-1])
+    im_end = tok.convert_tokens_to_ids("<|im_end|>")
+    if isinstance(im_end, int) and im_end != tok.unk_token_id and im_end in specials:
+        ids.add(im_end)
     return sorted(t for t in ids if isinstance(t, int))
 
 
