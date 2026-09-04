@@ -98,6 +98,34 @@ def test_incomplete_utf8_tail_is_excluded_not_counted(an):
     assert a["excluded_utf8"] == 1 and a["n_tokens"] == len(ids) - 1 and a["nc_canonical"] == 0
 
 
+def test_invalid_utf8_in_the_middle_excludes_only_the_bad_bytes(an):
+    # A lone continuation byte is invalid anywhere; the words on either side
+    # must still be measured, and the bad token excluded.
+    bad = next(t for t in range(0, 100256) if (b := an.token_bytes([t])[0]) and (b[0] & 0xC0) == 0x80 and len(b) == 1)
+    left, right = enc(an, "The quick brown fox"), enc(an, " jumps over the lazy dog")
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", left + [bad] + right))
+    assert a["excluded_utf8"] == 1
+    assert a["n_tokens"] == len(left) + len(right)
+    assert a["nc_canonical"] == 0
+    assert a["fragment_events"] == 1 and a["span_shapes"] == {"byte-fragment": 1}
+    # Surrounded by canonical text: counts as one event, one unit.
+    assert a["fragment_events_standalone"] == 1 and a["nc_events"] == 1 and a["n_units"] == a["n_canonical"] + 1
+    frag = a["spans"][0]
+    assert frag["shape"] == "byte-fragment" and frag["canonical"] is None and frag["pos"] == len(left)
+    # The rendered transcript shows the fragment explicitly, not as U+FFFD.
+    assert a["transcript"] == "The quick brown fox⟨bytes " + an.token_bytes([bad])[0].hex() + "⟩ jumps over the lazy dog"
+
+
+def test_fragment_adjacent_to_a_span_is_not_double_counted(an):
+    bad = next(t for t in range(0, 100256) if (b := an.token_bytes([t])[0]) and (b[0] & 0xC0) == 0x80 and len(b) == 1)
+    light, house = enc(an, "light"), enc(an, "house")
+    ids = enc(an, "The word is ") + light + house + [bad] + enc(an, " ok")
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", ids))
+    assert a["nc_spans"] == 1 and a["fragment_events"] == 1
+    assert a["fragment_events_standalone"] == 0
+    assert a["nc_events"] == a["nc_canonical"] and a["n_units"] == a["n_canonical"]
+
+
 def test_truncated_rollout_drops_its_last_word(an):
     # The cap cuts " numbers" after " nu"; the half-word's tokens are not
     # measured, so a cut is not mistaken for a non-canonical span.
@@ -134,12 +162,12 @@ def test_token_classes():
 def test_summarize_denominators():
     def row(n, nc_positions, finish="stop", correct=True):
         return {
-            "n_tokens": n, "n_canonical": n, "n_think": 0, "n_answer": n,
-            "nc_canonical": len(nc_positions), "nc_emitted": len(nc_positions), "nc_canonical_think": 0,
+            "n_tokens": n, "n_canonical": n, "n_units": n, "n_think": 0, "n_answer": n,
+            "nc_canonical": len(nc_positions), "nc_events": len(nc_positions), "nc_emitted": len(nc_positions), "nc_events_think": 0,
             "nc_spans": len(nc_positions), "nc_positions": nc_positions, "nc_classes": {}, "all_classes": {"word": n},
             "seq_flags": {str(L): any(p < L for p in nc_positions) for L in (256, 1024, 4096)},
             "excluded_utf8": 0, "excluded_truncated": 0, "finish_reason": finish, "correct": correct,
-            "think_closed": None, "entropy_mean": 0.5, "entropy_at_nc": [], "span_shapes": {},
+            "think_closed": None, "entropy_mean": 0.5, "entropy_at_nc": [], "span_shapes": {}, "fragment_events": 0, "fragment_events_standalone": 0, "transcript": "",
         }
 
     rows = [row(300, [5])] + [row(300, [])] * 3 + [row(5000, [], finish="length")]

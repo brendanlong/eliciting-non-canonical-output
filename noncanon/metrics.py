@@ -25,6 +25,7 @@ fixed lengths, and top-k entropy per position.
 from __future__ import annotations
 
 import argparse
+import codecs
 import json
 import re
 import statistics
@@ -83,11 +84,12 @@ class Span:
 @dataclass
 class Rollout:
     ids: list[int]
-    excluded_utf8: int = 0  # trailing tokens dropped as an incomplete UTF-8 character
+    excluded_utf8: int = 0  # tokens whose bytes are not valid UTF-8 (cut mid-character, or garbage)
     excluded_truncated: int = 0  # trailing tokens dropped because the cap cut a word
     spans: list[Span] = field(default_factory=list)
     n_canonical: int = 0  # canonical tokens over all measured runs
     excluded: set[int] = field(default_factory=set)  # indices of tokens not measured
+    fragments: list[tuple[int, list[int]]] = field(default_factory=list)  # (start, ids) of each invalid/incomplete byte sequence
 
 
 class Analyzer:
@@ -135,17 +137,6 @@ class Analyzer:
             e_from, c_from = e_to, c_to
         return len(canonical), spans
 
-    def trim_incomplete_utf8(self, run: list[int]) -> tuple[list[int], int]:
-        """Drop up to four trailing tokens that leave the run mid-character."""
-        run_bytes = self.token_bytes(run)
-        for k in range(min(4, len(run)) + 1):
-            try:
-                b"".join(run_bytes[: len(run) - k]).decode()
-                return run[: len(run) - k], k
-            except UnicodeDecodeError:
-                continue
-        raise ValueError("undecodable bytes inside a run, not just at its end")
-
     def measure(self, ids: list[int], finish_reason: str) -> Rollout:
         ids = list(ids)
         while ids and ids[-1] in self.special:  # the stop token is not text
@@ -158,12 +149,17 @@ class Analyzer:
             r.excluded_truncated = len(ids) - cut
             ids = ids[:cut]
         for offset, run in ordinary_runs(ids, self.special):
-            run, dropped = self.trim_incomplete_utf8(run)
-            r.excluded_utf8 += dropped
-            r.excluded.update(range(offset + len(run), offset + len(run) + dropped))
-            n_canonical, spans = self.canonical_spans(run, offset)
-            r.n_canonical += n_canonical
-            r.spans.extend(spans)
+            kept = set()
+            for s, e in decodable_segments(self.token_bytes(run)):
+                kept.update(range(s, e))
+                n_canonical, spans = self.canonical_spans(run[s:e], offset + s)
+                r.n_canonical += n_canonical
+                r.spans.extend(spans)
+            bad = [offset + i for i in range(len(run)) if i not in kept]
+            r.excluded_utf8 += len(bad)
+            r.excluded.update(bad)
+            for group in consecutive_groups(bad):
+                r.fragments.append((group[0], [ids[i] for i in group]))
         r.ids = ids
         return r
 
@@ -206,8 +202,37 @@ class Analyzer:
             }
             for s in r.spans
         ]
+        # Byte-fragment events: the model started a multi-byte character as
+        # separate byte tokens and never completed it (or emitted stray bytes).
+        # These bytes have no text form, so they cannot be scored canonical or
+        # not; they are reported as their own event class.
+        for start, frag_ids in r.fragments:
+            spans_out.append(
+                {
+                    "pos": start,
+                    "region": region(start),
+                    "emitted": [self.piece(t) for t in frag_ids],
+                    "emitted_bytes": [self.token_bytes([t])[0].hex() for t in frag_ids],
+                    "canonical": None,
+                    "context": b"".join(all_bytes[max(0, start - 8) : start]).decode(errors="replace"),
+                    "classes": ["fragment"] * len(frag_ids),
+                    "shape": "byte-fragment",
+                }
+            )
+        # Counting rule for fragments (Brendan, 2026-09-03): a fragment adjacent
+        # to a non-canonical span is part of that span (+0); a fragment with
+        # canonical tokens on both sides is one more event (+1 to the numerator
+        # and to the denominator, like a span of one canonical token).
+        span_ranges = [(sp.start, sp.start + len(sp.emitted)) for sp in r.spans]
+        standalone = [
+            (start, frag) for start, frag in r.fragments
+            if not any(e == start or b == start + len(frag) for b, e in span_ranges)
+        ]
+        nc_events = sum(len(sp.canonical) for sp in r.spans) + len(standalone)
+        n_units = r.n_canonical + len(standalone)
         n_think = sum(region(i) == "think" for i in measured)
         answer_text = full[answer_from:].decode(errors="replace") if answer_from is not None else ""
+        transcript = render_transcript(all_bytes, {i for start, frag in r.fragments for i in range(start, start + len(frag))})
         pred, correct = verify(answer_text, rec.get("answer"))
         entropies = topk_entropy(rec["topk_logprobs"])[: len(ids)]
 
@@ -219,12 +244,17 @@ class Analyzer:
             "think_closed": (think_end is not None) if has_think else None,
             "n_tokens": len(measured),
             "n_canonical": r.n_canonical,
+            "n_units": n_units,  # canonical tokens + standalone fragment events (headline denominator)
             "n_think": n_think,
             "n_answer": len(measured) - n_think,
-            "nc_canonical": sum(len(s.canonical) for s in r.spans),
+            "nc_canonical": sum(len(s.canonical) for s in r.spans),  # segmentation only
+            "nc_events": nc_events,  # headline numerator: canonical tokens in spans + standalone fragments
             "nc_emitted": len(nc_emitted),
-            "nc_canonical_think": sum(len(s.canonical) for s in r.spans if region(s.start) == "think"),
+            "nc_events_think": sum(len(s.canonical) for s in r.spans if region(s.start) == "think")
+            + sum(region(start) == "think" for start, _ in standalone),
             "nc_spans": len(r.spans),
+            "fragment_events": len(r.fragments),
+            "fragment_events_standalone": len(standalone),
             "span_shapes": Counter(sp["shape"] for sp in spans_out),
             "nc_positions": [ordinal[i] for i in nc_emitted],
             "nc_classes": Counter(classes[i] for i in nc_emitted),
@@ -237,7 +267,74 @@ class Analyzer:
             "entropy_mean": float(entropies.mean()) if len(entropies) else None,
             "entropy_at_nc": [float(entropies[i]) for i in nc_emitted if i < len(entropies)],
             "spans": spans_out,
+            "transcript": transcript,
         }
+
+
+def decodable_segments(chunks: list[bytes]) -> list[tuple[int, int]]:
+    """Maximal token ranges whose concatenated bytes are valid UTF-8.
+
+    A rollout can end mid-character (cut by the cap) or, rarely, emit bytes
+    that are not UTF-8 at all. Tokens in an incomplete or invalid sequence
+    are left out of every segment so they are not measured.
+    """
+    segments, start, clean_end = [], 0, 0
+    dec = codecs.getincrementaldecoder("utf-8")()
+    for i, b in enumerate(chunks):
+        try:
+            dec.decode(b)
+        except UnicodeDecodeError:
+            # The bytes buffered so far (an unfinished character) are not text;
+            # close the segment before them. The token that tripped the error
+            # may itself be fine (e.g. an ASCII word after an abandoned prefix),
+            # so try it again on a fresh decoder.
+            if clean_end > start:
+                segments.append((start, clean_end))
+            dec.reset()
+            start = clean_end = i
+            try:
+                dec.decode(b)
+            except UnicodeDecodeError:  # a stray continuation byte: exclude it too
+                dec.reset()
+                start = clean_end = i + 1
+                continue
+        if not dec.getstate()[0]:  # no bytes buffered: the character is complete
+            clean_end = i + 1
+    if clean_end > start:
+        segments.append((start, clean_end))
+    return segments
+
+
+def render_transcript(chunks: list[bytes], fragment_indices: set[int]) -> str:
+    """Decode the rollout for reading, showing byte-fragment tokens explicitly.
+
+    A fragment is rendered as ``⟨bytes e2 88⟩`` so that a transcript with a
+    fragment between two words is distinguishable from one without (vLLM's
+    text field shows a replacement character, which the model can also emit
+    legitimately).
+    """
+    out, buf = [], []
+    for i, b in enumerate(chunks):
+        if i in fragment_indices:
+            if buf:
+                out.append(b"".join(buf).decode(errors="replace"))
+                buf = []
+            out.append(f"⟨bytes {b.hex(' ')}⟩")
+        else:
+            buf.append(b)
+    if buf:
+        out.append(b"".join(buf).decode(errors="replace"))
+    return "".join(out)
+
+
+def consecutive_groups(indices: list[int]) -> list[list[int]]:
+    groups: list[list[int]] = []
+    for i in indices:
+        if groups and i == groups[-1][-1] + 1:
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+    return groups
 
 
 def cumulative_ends(chunks: list[bytes]) -> list[int]:
@@ -329,13 +426,13 @@ def _pct(x: float | None) -> str:
 
 def _bucket(rows: list[dict], key) -> dict:
     """Totals per bucket; ``key(index, row)`` names the bucket."""
-    out = defaultdict(lambda: {"rollouts": 0, "canonical": 0, "nc": 0})
+    out = defaultdict(lambda: {"rollouts": 0, "units": 0, "nc": 0})
     for i, r in enumerate(rows):
         b = out[key(i, r)]
         b["rollouts"] += 1
-        b["canonical"] += r["n_canonical"]
-        b["nc"] += r["nc_canonical"]
-    return {k: {**v, "rate": _rate(v["nc"], v["canonical"])} for k, v in sorted(out.items())}
+        b["units"] += r["n_units"]
+        b["nc"] += r["nc_events"]
+    return {k: {**v, "rate": _rate(v["nc"], v["units"])} for k, v in sorted(out.items())}
 
 
 def outcome(r: dict) -> str:
@@ -347,7 +444,9 @@ def outcome(r: dict) -> str:
 def summarize(rows: list[dict]) -> dict:
     n = len(rows)
     canonical = sum(r["n_canonical"] for r in rows)
-    nc = sum(r["nc_canonical"] for r in rows)
+    units = sum(r["n_units"] for r in rows)
+    nc = sum(r["nc_events"] for r in rows)
+    nc_seg = sum(r["nc_canonical"] for r in rows)
     think_canonical = sum(r["n_think"] for r in rows)  # canonical ≈ emitted outside spans; think split is by emitted index
     lengths = sorted(r["n_tokens"] for r in rows)
     cls_nc, cls_all = Counter(), Counter()
@@ -373,15 +472,22 @@ def summarize(rows: list[dict]) -> dict:
         "excluded_truncated": sum(r["excluded_truncated"] for r in rows),
         "emitted_tokens": sum(r["n_tokens"] for r in rows),
         "canonical_tokens": canonical,
-        "nc_canonical": nc,
+        "units": units,  # canonical tokens + standalone fragment events
+        "nc_events": nc,
+        "nc_canonical": nc_seg,
         "nc_emitted": sum(r["nc_emitted"] for r in rows),
-        "per_token_rate": _rate(nc, canonical),
+        "per_token_rate": _rate(nc, units),  # headline: spans + standalone fragments
+        "per_token_rate_segmentation_only": _rate(nc_seg, canonical),
         "spans": sum(r["nc_spans"] for r in rows),
         "spans_per_1k_tokens": round(1000 * sum(r["nc_spans"] for r in rows) / canonical, 3) if canonical else None,
-        "rollouts_with_nc": sum(r["nc_spans"] > 0 for r in rows),
+        "rollouts_with_nc": sum(r["nc_spans"] > 0 or r["fragment_events"] > 0 for r in rows),
+        "rollouts_with_spans_only": sum(r["nc_spans"] > 0 for r in rows),
+        "fragment_events": sum(r["fragment_events"] for r in rows),
+        "fragment_events_standalone": sum(r["fragment_events_standalone"] for r in rows),
+        "rollouts_with_fragments": sum(r["fragment_events"] > 0 for r in rows),
         "span_shapes": dict(sum((Counter(r["span_shapes"]) for r in rows), Counter())),
-        "think": {"tokens": think_canonical, "nc": sum(r["nc_canonical_think"] for r in rows)},
-        "answer": {"tokens": sum(r["n_answer"] for r in rows), "nc": nc - sum(r["nc_canonical_think"] for r in rows)},
+        "think": {"tokens": think_canonical, "nc": sum(r["nc_events_think"] for r in rows)},
+        "answer": {"tokens": sum(r["n_answer"] for r in rows), "nc": nc - sum(r["nc_events_think"] for r in rows)},
         "length": {
             "mean": round(statistics.fmean(lengths), 1) if lengths else None,
             "median": lengths[len(lengths) // 2] if lengths else None,
@@ -414,9 +520,12 @@ def to_markdown(name: str, s: dict) -> str:
         f"accuracy (finished, parsed): {_pct(s['accuracy'])}; excluded tokens: {s['excluded_utf8']} incomplete UTF-8, "
         f"{s['excluded_truncated']} cut last word",
         f"- length (emitted tokens): mean {s['length']['mean']}, median {s['length']['median']}, p90 {s['length']['p90']}, max {s['length']['max']}",
-        f"- **per-token non-canonical rate: {_pct(s['per_token_rate'])}** ({s['nc_canonical']} of {s['canonical_tokens']} canonical tokens; "
-        f"{s['nc_emitted']} emitted tokens in {s['spans']} spans, {s['spans_per_1k_tokens']} spans/1k tokens, "
-        f"{s['rollouts_with_nc']}/{s['rollouts']} rollouts with ≥1; span shapes {s['span_shapes']})",
+        f"- **per-token non-canonical rate: {_pct(s['per_token_rate'])}** ({s['nc_events']} of {s['units']} units = canonical tokens in "
+        f"{s['spans']} spans + {s['fragment_events_standalone']} standalone byte-fragment events; {s['nc_emitted']} emitted tokens in spans, "
+        f"{s['spans_per_1k_tokens']} spans/1k tokens; {s['rollouts_with_nc']}/{s['rollouts']} rollouts with ≥1 event; span shapes {s['span_shapes']})",
+        f"- segmentation only (fragments excluded): {_pct(s['per_token_rate_segmentation_only'])} ({s['nc_canonical']} of {s['canonical_tokens']}), "
+        f"{s['rollouts_with_spans_only']}/{s['rollouts']} rollouts; byte fragments: {s['fragment_events']} events ({s['fragment_events_standalone']} standalone, "
+        f"the rest adjacent to a span), {s['excluded_utf8']} tokens, {s['rollouts_with_fragments']}/{s['rollouts']} rollouts",
         f"- think: {_pct(_rate(think['nc'], think['tokens']))} ({think['nc']} / {think['tokens']}); "
         f"answer: {_pct(_rate(answer['nc'], answer['tokens']))} ({answer['nc']} / {answer['tokens']})",
         f"- sequence-level flag rate at L={list(s['seq_flag_rate'])}: {[_pct(v) for v in s['seq_flag_rate'].values()]}",
@@ -428,8 +537,8 @@ def to_markdown(name: str, s: dict) -> str:
         "",
     ]
     for title, table in (("outcome", s["by_outcome"]), ("length quartile", s["by_length_quartile"])):
-        lines += [f"| {title} | rollouts | canonical tokens | non-canonical | rate |", "|---|--:|--:|--:|--:|"]
-        lines += [f"| {k} | {v['rollouts']} | {v['canonical']} | {v['nc']} | {_pct(v['rate'])} |" for k, v in table.items()]
+        lines += [f"| {title} | rollouts | units | non-canonical | rate |", "|---|--:|--:|--:|--:|"]
+        lines += [f"| {k} | {v['rollouts']} | {v['units']} | {v['nc']} | {_pct(v['rate'])} |" for k, v in table.items()]
         lines.append("")
     lines += [
         "| position decile | " + " | ".join(s["by_position_decile"]) + " |",
@@ -451,7 +560,7 @@ def main() -> None:
 
     an = Analyzer(args.tokenizer, args.revision)
     groups: dict[str, list[dict]] = defaultdict(list)
-    with (args.out_dir / "analysis.jsonl").open("w") as fa, (args.out_dir / "examples.jsonl").open("w") as fe:
+    with (args.out_dir / "analysis.jsonl").open("w") as fa, (args.out_dir / "examples.jsonl").open("w") as fe, (args.out_dir / "transcripts.jsonl").open("w") as ft:
         for path in args.records:
             meta_path = path.with_suffix(".meta.json")
             run = json.loads(meta_path.read_text()) if meta_path.exists() else {}
@@ -461,7 +570,8 @@ def main() -> None:
                 groups[path.name].append(a)
                 for sp in a["spans"]:
                     fe.write(json.dumps({**stamp, "prompt_id": a["prompt_id"], "sample": a["sample"], **sp}, ensure_ascii=False) + "\n")
-                slim = {k: v for k, v in a.items() if k not in ("spans", "entropy_at_nc", "nc_positions")}
+                ft.write(json.dumps({**stamp, "prompt_id": a["prompt_id"], "sample": a["sample"], "problem": rec.get("problem"), "answer": rec.get("answer"), "finish_reason": a["finish_reason"], "correct": a["correct"], "nc_spans": a["nc_spans"], "fragment_events": a["fragment_events"], "transcript": a["transcript"]}, ensure_ascii=False) + "\n")
+                slim = {k: v for k, v in a.items() if k not in ("spans", "entropy_at_nc", "nc_positions", "transcript")}
                 for k in ("nc_classes", "all_classes", "span_shapes"):
                     slim[k] = dict(slim[k])
                 fa.write(json.dumps({**stamp, **slim}, ensure_ascii=False) + "\n")

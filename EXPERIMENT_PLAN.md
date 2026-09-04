@@ -176,7 +176,15 @@ truncated rollouts are reported as their own category.
     spans divided by canonical tokens, from a minimal diff between the
     emitted sequence and its canonical re-encoding, so that numerator and
     denominator count the same thing (the emitted-token count inside
-    spans is reported alongside);
+    spans is reported alongside). Byte fragments (the model starts a
+    multi-byte character as separate byte tokens and never completes it;
+    the bytes have no text form, so the canonical comparison is undefined)
+    are counted by this rule (decision 2026-09-03): a fragment adjacent to
+    a non-canonical span is part of that span (+0); a fragment with
+    canonical tokens on both sides is one more event (+1 to numerator and
+    denominator). The segmentation-only rate (fragments excluded) is
+    reported alongside, and fragments are rendered explicitly in the
+    transcripts as `⟨bytes e2 88⟩` so they are distinguishable from text;
   - length-matched rate on the same prompt across checkpoints;
   - sequence-level rate at a stated fixed length (familiar, free);
   - expected non-canonical probability mass from top-k logprobs at each
@@ -381,6 +389,43 @@ elicitation material; non-English and code text as the regime where Geh
 found most spontaneous non-canonical output; and a cheap input-side arm
 using Jain's retokenization procedure on the same prompts, asking whether a
 non-canonical *input* segmentation raises the non-canonical *output* rate.
+
+## Analysis specification for the full run (Brendan, 2026-09-03, written after the DPO and Zero DAPO cells and before the Think and AIME cells were analysed)
+
+The pre-registered test was per-token, which is also the one judged
+implausibly strong because events cluster within rollouts. Report both:
+the per-token test and the per-rollout test, comparing DAPO to DAPO and
+AIME to AIME (never pooled), for each pair of checkpoints, under the
+headline counting rule and the segmentation-only rate. Report every
+p-value and let the reader decide what to believe. Everything else
+(think vs answer, length, position, span shapes, digits, entropy) is
+descriptive.
+
+Added after the DAPO cells (2026-09-03): also compare DAPO to AIME
+*within* each checkpoint, same two tests; expected to be indistinguishable
+or AIME slightly higher (prediction 10).
+
+## Added after the DAPO cells (Brendan, 2026-09-03)
+
+The two most on-policy-RL'd checkpoints came out on opposite sides of
+DPO (Think RL final far below it, RL-Zero-Math above it). Current
+hypothesis: this is general training amount, i.e. with training quality
+approximately held equal (which is not true between Think and Zero), more
+training reduces the non-canonical rate; Think RL final has more training
+than DPO, and both have more than Zero.
+
+Next cells, contingent on AIME coming out as expected:
+
+13. **Think-SFT (pre-DPO) on DAPO 500.** Prediction: its rate is higher
+    than DPO's, because the model has less training.
+14. **An earlier RL-Zero-Math step checkpoint on DAPO 500** (compliance
+    and success rate must be monitored, since an early checkpoint may not
+    attempt the task properly). Direction to be observed: whether the
+    rate goes up or down from the earlier step to the final one.
+
+After that section: a cheap comparison in another family (Llama or Qwen)
+and possibly the chat prompts, to see whether the pattern is
+model-specific or task-specific.
 
 ## Follow-ups under consideration
 
