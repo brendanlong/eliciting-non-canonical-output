@@ -224,6 +224,16 @@ dropped-space word joins with a variable name: `' than'`,`'k'` → `' thank'`
 ×7, `' of'`,`'f'` ×6. Heavily clustered: one rollout carries 52 spans and
 another 30.
 
+**DPO vs Zero, rollouts as the unit** (events cluster, so token-level
+tests overstate certainty). Rollout-bootstrap 95% CIs on the pooled rate:
+DPO 0.0142–0.0179%, Zero 0.0189–0.0296%. Permutation test on the pooled
+rate with rollouts permuted: Zero − DPO = 0.0077 pp, two-sided p = 0.0016.
+Rollouts with ≥1 span: 50.2% vs 58.0%, z = 2.5. Spans per rollout: DPO mean
+0.81, variance 1.15, max 8; Zero mean 1.09, variance 8.63, max 52. Median
+per-rollout rate: DPO 0.0052%, Zero 0.0138%. Dropping Zero's two densest
+rollouts: Zero 0.0206%, difference 0.0046 pp, p = 0.011. (Token-level
+Poisson z ignoring clustering: 7.4.)
+
 Prediction status for this cell: not yet, Think RL final at 500 prompts is
 still running; the pilot's 50-prompt Think number is on a different prompt
 sample and is listed for orientation only.
