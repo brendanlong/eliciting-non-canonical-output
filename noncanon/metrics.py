@@ -29,7 +29,7 @@ import codecs
 import json
 import re
 import statistics
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -252,6 +252,9 @@ class Analyzer:
         ]
         nc_events = sum(len(sp.canonical) for sp in r.spans) + len(standalone)
         n_units = r.n_canonical + len(standalone)
+        # Ordinal (among measured tokens) of every event start: span starts and
+        # standalone fragments, for the fixed-window rollout flags.
+        event_positions = sorted([ordinal[sp.start] for sp in r.spans] + [bisect_left(measured, start) for start, _ in standalone])
         n_think = sum(region(i) == "think" for i in measured)
         answer_text = full[answer_from:].decode(errors="replace") if answer_from is not None else ""
         transcript = render_transcript(all_bytes, {i for start, frag in r.fragments for i in range(start, start + len(frag))})
@@ -281,7 +284,8 @@ class Analyzer:
             "nc_positions": [ordinal[i] for i in nc_emitted],
             "nc_classes": Counter(classes[i] for i in nc_emitted),
             "all_classes": Counter(classes.values()),
-            "seq_flags": {str(L): any(ordinal[i] < L for i in nc_emitted) for L in SEQ_LENGTHS},
+            "event_positions": event_positions,
+            "seq_flags": {str(L): bool(event_positions) and event_positions[0] < L for L in SEQ_LENGTHS},
             "excluded_utf8": r.excluded_utf8,
             "excluded_oov": r.excluded_oov,
             "excluded_truncated": r.excluded_truncated,
@@ -551,15 +555,16 @@ def to_markdown(name: str, s: dict) -> str:
         f"accuracy (finished, parsed): {_pct(s['accuracy'])}; excluded tokens: {s['excluded_utf8']} incomplete UTF-8, "
         f"{s['excluded_oov']} out-of-vocabulary ids, {s['excluded_truncated']} cut last word",
         f"- length (emitted tokens): mean {s['length']['mean']}, median {s['length']['median']}, p90 {s['length']['p90']}, max {s['length']['max']}",
-        f"- **per-token non-canonical rate: {_pct(s['per_token_rate'])}** ({s['nc_events']} of {s['units']} units = canonical tokens in "
+        f"- **rollouts with ≥1 non-canonical event: {s['rollouts_with_nc']}/{s['rollouts']} ({_pct(_rate(s['rollouts_with_nc'], s['rollouts']))})**; "
+        f"within the first L={list(s['seq_flag_rate'])} tokens, among rollouts that long: {[_pct(v) for v in s['seq_flag_rate'].values()]}",
+        f"- per-token non-canonical rate: {_pct(s['per_token_rate'])} ({s['nc_events']} of {s['units']} units = canonical tokens in "
         f"{s['spans']} spans + {s['fragment_events_standalone']} standalone byte-fragment events; {s['nc_emitted']} emitted tokens in spans, "
-        f"{s['spans_per_1k_tokens']} spans/1k tokens; {s['rollouts_with_nc']}/{s['rollouts']} rollouts with ≥1 event; span shapes {s['span_shapes']})",
+        f"{s['spans_per_1k_tokens']} spans/1k tokens; span shapes {s['span_shapes']})",
         f"- segmentation only (fragments excluded): {_pct(s['per_token_rate_segmentation_only'])} ({s['nc_canonical']} of {s['canonical_tokens']}), "
         f"{s['rollouts_with_spans_only']}/{s['rollouts']} rollouts; byte fragments: {s['fragment_events']} events ({s['fragment_events_standalone']} standalone, "
         f"the rest adjacent to a span), {s['excluded_utf8']} tokens, {s['rollouts_with_fragments']}/{s['rollouts']} rollouts",
         f"- think: {_pct(_rate(think['nc'], think['tokens']))} ({think['nc']} / {think['tokens']}); "
         f"answer: {_pct(_rate(answer['nc'], answer['tokens']))} ({answer['nc']} / {answer['tokens']})",
-        f"- sequence-level flag rate at L={list(s['seq_flag_rate'])}: {[_pct(v) for v in s['seq_flag_rate'].values()]}",
         f"- entropy (top-k, nats): all positions {s['entropy']['mean_all_positions']}, at non-canonical positions {s['entropy']['mean_at_nc_positions']}",
         "",
         "| token class | tokens | non-canonical | rate |",

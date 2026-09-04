@@ -22,10 +22,13 @@ noncanon/
   records.py     the Parquet record schema shared by generation and analysis
   metrics.py     round-trip metric (exact minimal diff), think/answer split, token classes,
                  integer verifier, length/outcome/position slices, top-k entropy
+  compare.py     cell-vs-cell tests: rollouts flagged (Fisher exact, fixed-window), per-token rate (secondary)
+  tail.py        where in the next-token distribution non-canonical spans start
   upload.py      push a run directory to the HF dataset
   gpu_check.py   fail fast if CUDA is not usable on the host
   tests/         CPU tests on the real OLMo-3 tokenizer
 prompts/         generated prompt files and the DAPO filter report (committed)
+scripts/         recompute every cell's metrics; run every comparison in RESULTS.md
 skypilot/        RunPod task definitions
 ```
 

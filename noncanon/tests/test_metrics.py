@@ -209,3 +209,23 @@ def test_summarize_denominators():
     assert s["seq_flag_rate"]["4096"] == 0.0  # only the truncated rollout reached 4096
     assert s["accuracy"] == 1.0 and s["by_outcome"]["truncated"]["rollouts"] == 1
     assert set(s["by_length_quartile"]) == {"q1", "q2", "q3", "q4"}
+
+
+def test_fisher_exact_matches_known_tables():
+    from noncanon.compare import fisher_exact, wilson
+
+    assert abs(fisher_exact(3, 4, 1, 4) - 0.4857) < 1e-3  # [[3,1],[1,3]]: classic two-sided value
+    assert abs(fisher_exact(1, 5, 9, 10) - 0.0170) < 1e-3  # [[1,4],[9,1]]: P(x=1) + P(x=0) = (50 + 1) / 3003
+    assert fisher_exact(0, 500, 0, 500) == 1.0
+    lo, hi = wilson(51, 500)
+    assert 0.078 < lo < 0.080 and 0.130 < hi < 0.132  # 10.2% flagged: Wilson [7.9%, 13.1%]
+
+
+def test_window_flag_counts_a_standalone_fragment(an):
+    # A lone incomplete byte between words is an event (Brendan's +1 rule) and
+    # must trip the fixed-window flag like a span would.
+    left, right = enc(an, "The quick brown fox"), enc(an, " jumps over the lazy dog")
+    bad = next(t for t in range(0, 100256) if (b := an.token_bytes([t])[0]) and (b[0] & 0xC0) == 0x80 and len(b) == 1)
+    a = an.analyze(make_record(an, "<|im_start|>assistant\n", left + [bad] + right))
+    assert a["fragment_events_standalone"] == 1 and a["nc_events"] == 1
+    assert a["event_positions"] == [len(left)] and a["seq_flags"]["256"] is True
