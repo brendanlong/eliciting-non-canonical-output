@@ -654,6 +654,52 @@ Tulu 3's public RLVR sets (`allenai/RLVR-GSM-MATH-IF-Mixed-Constraints`,
 exact/prefix rule used for the OLMo-3 filter. Tulu's SFT mixture was not
 checked. The Instruct ladder shares the OLMo-3 filter already applied.
 
+### OLMo-3 Instruct ladder, DAPO 500, both arms (2026-09-04)
+
+Same base and code as the Think track, short-answer post-training (no
+think block). Recommended = 0.6 / 0.95. "Parsed-only" = rate over the
+correct + incorrect outcome buckets (excludes truncated and unparsed
+rollouts), the stand-in for judge-conditioning until the judge exists.
+
+| checkpoint | arm | rollouts with ≥1 event | units | non-canonical | **rate** | 95% CI | parsed-only rate | mean tokens | finish (stop / cap) | accuracy |
+|---|---|--:|--:|--:|--:|---|--:|--:|---|--:|
+| Instruct-SFT | untruncated | 17 / 500 | 269,205 | 72 | 0.0267% | 0.0100–0.0482% | 0.0261% | 538 | 500 / 0 | 32.0% (85 unparsed) |
+| Instruct-SFT | recommended | 2 / 500 | 913,241 | 4 | 0.0004% | — | 0.0015% | 1,826 | 482 / 18 | 38.9% (35 unparsed) |
+| Instruct-DPO | untruncated | 105 / 500 | 1,701,689 | 316 | 0.0186% | 0.0153–0.0221% | 0.0187% | 3,403 | 498 / 2 | 74.2% |
+| Instruct-DPO | recommended | 25 / 500 | 1,755,763 | 50 | 0.0028% | — | 0.0021% | 3,512 | 485 / 15 | 80.4% |
+| Instruct (RL final) | untruncated | 31 / 500 | 1,272,567 | 60 | 0.0047% | 0.0031–0.0065% | 0.0047% | 2,545 | 500 / 0 | 92.0% |
+| Instruct (RL final) | recommended | 5 / 500 | 1,253,525 | 10 | 0.0008% | — | 0.0008% | 2,507 | 500 / 0 | 93.6% |
+
+Notes on the cells: SFT answers are short (538 tokens at temperature 1)
+and often unparsable (85 / 500), so its untruncated CI is wide; DPO
+lengthens answers 6× and raises accuracy from 32% to 74%; at the
+recommended settings SFT and DPO run to the 32k cap in 18 and 15 rollouts
+(repetition loops), which is why those arms have more tokens than the
+untruncated ones. Instruct-DPO's recommended arm has 19 byte-fragment
+events among its 50 units; Instruct-SFT's untruncated arm 12 of its 72
+events in unparsed rollouts. Instruct (RL final) has no truncations, no
+unparsed rollouts, and 92–94% accuracy.
+
+Tests per the specification (untruncated; `noncanon.compare --arm untruncated`):
+- SFT vs DPO: DPO − SFT = −0.0082 pp, per-token z = 2.8 (p = 0.005),
+  per-rollout permutation p = 0.044.
+- DPO vs RL final: −0.0139 pp, per-token z = 10.5 (p = 7e-26),
+  per-rollout p < 0.00005.
+- SFT vs RL final: −0.0220 pp, per-token z = 11.2 (p = 3e-29),
+  per-rollout p < 0.00005.
+Recommended arm: SFT vs DPO +0.0024 pp, z = 4.2 (p = 3e-5), per-rollout
+p = 0.002; DPO vs RL final −0.0021 pp, z = 3.9 (p = 9e-5), per-rollout
+p = 0.004.
+
+**Prediction status.** Prediction 3 (RL final above DPO): refuted again
+on this ladder, in both arms (RL final about 4× below DPO untruncated,
+3.5× below at the recommended settings). Prediction 4 (SFT ≈ DPO): not
+supported; SFT is above DPO per token at temperature 1 (p = 0.044 at the
+rollout level) and below it at the recommended settings, but the SFT
+cell's short, often-unparsable answers make it the least comparable cell
+in the ladder. The Think-ladder pattern "DPO high, RL final low"
+replicates here; the "SFT low" part does not.
+
 ## Reproduction
 
 Every number above comes from these commands, run from a clean checkout
@@ -694,7 +740,7 @@ on-box copies uploaded by early runs were produced by earlier versions of
 `metrics.py` and are superseded by rerunning this):
 
 ```
-uv run python -m noncanon.metrics --tokenizer allenai/Olmo-3-7B-Think --revision <revision> --records out/<run>/<prompt set>/*.parquet --out-dir out/<run>/<prompt set>/metrics
+uv run python -m noncanon.metrics --tokenizer <checkpoint> --revision <revision> --records out/<run>/<prompt set>/*.parquet --out-dir out/<run>/<prompt set>/metrics
 ```
 
 (`--revision` matters only for step checkpoints such as `rlzero-math-step300`;
@@ -719,6 +765,9 @@ uv run python -m noncanon.compare out/rlzero-math/aime_2024_2025 out/think-main/
 uv run python -m noncanon.compare out/think-main/dapo_sample500 out/think-main-recommended/dapo_sample500
 uv run python -m noncanon.compare out/think-dpo-recommended/dapo_sample500 out/think-main-recommended/dapo_sample500
 uv run python -m noncanon.compare out/think-dpo/dapo_sample500 out/think-dpo-recommended/dapo_sample500
+uv run python -m noncanon.compare out/instruct-sft/dapo_sample500 out/instruct-dpo/dapo_sample500 --arm untruncated   # and --arm recommended
+uv run python -m noncanon.compare out/instruct-dpo/dapo_sample500 out/instruct-main/dapo_sample500 --arm untruncated
+uv run python -m noncanon.compare out/instruct-sft/dapo_sample500 out/instruct-main/dapo_sample500 --arm untruncated
 ```
 
 Tail depth, emitted-token ranks and bare-space spans:
