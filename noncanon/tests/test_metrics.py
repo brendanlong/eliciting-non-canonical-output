@@ -107,6 +107,9 @@ def test_invalid_utf8_in_the_middle_excludes_only_the_bad_bytes(an):
     assert a["excluded_utf8"] == 1
     assert a["n_tokens"] == len(left) + len(right)
     assert a["nc_canonical"] == 0
+    assert a["fragment_events"] == 1 and a["span_shapes"] == {"byte-fragment": 1}
+    frag = a["spans"][0]
+    assert frag["shape"] == "byte-fragment" and frag["canonical"] is None and frag["pos"] == len(left)
 
 
 def test_truncated_rollout_drops_its_last_word(an):
@@ -150,7 +153,7 @@ def test_summarize_denominators():
             "nc_spans": len(nc_positions), "nc_positions": nc_positions, "nc_classes": {}, "all_classes": {"word": n},
             "seq_flags": {str(L): any(p < L for p in nc_positions) for L in (256, 1024, 4096)},
             "excluded_utf8": 0, "excluded_truncated": 0, "finish_reason": finish, "correct": correct,
-            "think_closed": None, "entropy_mean": 0.5, "entropy_at_nc": [], "span_shapes": {},
+            "think_closed": None, "entropy_mean": 0.5, "entropy_at_nc": [], "span_shapes": {}, "fragment_events": 0,
         }
 
     rows = [row(300, [5])] + [row(300, [])] * 3 + [row(5000, [], finish="length")]

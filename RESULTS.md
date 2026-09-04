@@ -208,6 +208,15 @@ positions, 0.555 at non-canonical positions. By outcome: correct 550 / 2.51M
 quartile: 0.029%, 0.017%, 0.028%, 0.023%. Token class of emitted tokens in
 spans: whitespace 4, digit 135, word 407, mixed 18, symbol 527.
 
+**Byte-fragment events** (the model starts a multi-byte character as
+separate byte tokens and never completes it, e.g. `\xe2\x88` — the first two
+bytes of `−`/`√` — followed by ` geological`; the bytes have no text form so
+they cannot be scored canonical or not, and are reported separately):
+Think-DPO 107 events / 207 tokens in 59 rollouts (53 of those rollouts
+finished and verified correct); RL-Zero-Math 3 events / 5 tokens in 3
+rollouts. Rate if every fragment token is counted as non-canonical:
+Think-DPO 0.0211%, RL-Zero-Math 0.0238%.
+
 **Most common span patterns** (emitted → canonical; count):
 
 Think-DPO (403 spans): `' '`,`'.'` → `' .'` ×16; `' '`,`'�'` (space then a

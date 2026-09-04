@@ -89,6 +89,7 @@ class Rollout:
     spans: list[Span] = field(default_factory=list)
     n_canonical: int = 0  # canonical tokens over all measured runs
     excluded: set[int] = field(default_factory=set)  # indices of tokens not measured
+    fragments: list[tuple[int, list[int]]] = field(default_factory=list)  # (start, ids) of each invalid/incomplete byte sequence
 
 
 class Analyzer:
@@ -157,6 +158,8 @@ class Analyzer:
             bad = [offset + i for i in range(len(run)) if i not in kept]
             r.excluded_utf8 += len(bad)
             r.excluded.update(bad)
+            for group in consecutive_groups(bad):
+                r.fragments.append((group[0], [ids[i] for i in group]))
         r.ids = ids
         return r
 
@@ -199,6 +202,23 @@ class Analyzer:
             }
             for s in r.spans
         ]
+        # Byte-fragment events: the model started a multi-byte character as
+        # separate byte tokens and never completed it (or emitted stray bytes).
+        # These bytes have no text form, so they cannot be scored canonical or
+        # not; they are reported as their own event class.
+        for start, frag_ids in r.fragments:
+            spans_out.append(
+                {
+                    "pos": start,
+                    "region": region(start),
+                    "emitted": [self.piece(t) for t in frag_ids],
+                    "emitted_bytes": [self.token_bytes([t])[0].hex() for t in frag_ids],
+                    "canonical": None,
+                    "context": b"".join(all_bytes[max(0, start - 8) : start]).decode(errors="replace"),
+                    "classes": ["fragment"] * len(frag_ids),
+                    "shape": "byte-fragment",
+                }
+            )
         n_think = sum(region(i) == "think" for i in measured)
         answer_text = full[answer_from:].decode(errors="replace") if answer_from is not None else ""
         pred, correct = verify(answer_text, rec.get("answer"))
@@ -218,6 +238,7 @@ class Analyzer:
             "nc_emitted": len(nc_emitted),
             "nc_canonical_think": sum(len(s.canonical) for s in r.spans if region(s.start) == "think"),
             "nc_spans": len(r.spans),
+            "fragment_events": len(r.fragments),
             "span_shapes": Counter(sp["shape"] for sp in spans_out),
             "nc_positions": [ordinal[i] for i in nc_emitted],
             "nc_classes": Counter(classes[i] for i in nc_emitted),
@@ -256,6 +277,16 @@ def decodable_segments(chunks: list[bytes]) -> list[tuple[int, int]]:
     if clean_end > start:
         segments.append((start, clean_end))
     return segments
+
+
+def consecutive_groups(indices: list[int]) -> list[list[int]]:
+    groups: list[list[int]] = []
+    for i in indices:
+        if groups and i == groups[-1][-1] + 1:
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+    return groups
 
 
 def cumulative_ends(chunks: list[bytes]) -> list[int]:
@@ -397,6 +428,10 @@ def summarize(rows: list[dict]) -> dict:
         "spans": sum(r["nc_spans"] for r in rows),
         "spans_per_1k_tokens": round(1000 * sum(r["nc_spans"] for r in rows) / canonical, 3) if canonical else None,
         "rollouts_with_nc": sum(r["nc_spans"] > 0 for r in rows),
+        "fragment_events": sum(r["fragment_events"] for r in rows),
+        "rollouts_with_fragments": sum(r["fragment_events"] > 0 for r in rows),
+        # Upper bound treating every excluded byte-fragment token as non-canonical.
+        "rate_incl_fragments": _rate(nc + sum(r["excluded_utf8"] for r in rows), canonical + sum(r["excluded_utf8"] for r in rows)),
         "span_shapes": dict(sum((Counter(r["span_shapes"]) for r in rows), Counter())),
         "think": {"tokens": think_canonical, "nc": sum(r["nc_canonical_think"] for r in rows)},
         "answer": {"tokens": sum(r["n_answer"] for r in rows), "nc": nc - sum(r["nc_canonical_think"] for r in rows)},
@@ -435,6 +470,8 @@ def to_markdown(name: str, s: dict) -> str:
         f"- **per-token non-canonical rate: {_pct(s['per_token_rate'])}** ({s['nc_canonical']} of {s['canonical_tokens']} canonical tokens; "
         f"{s['nc_emitted']} emitted tokens in {s['spans']} spans, {s['spans_per_1k_tokens']} spans/1k tokens, "
         f"{s['rollouts_with_nc']}/{s['rollouts']} rollouts with ≥1; span shapes {s['span_shapes']})",
+        f"- byte-fragment events (incomplete/invalid multi-byte characters, unscorable): {s['fragment_events']} events, "
+        f"{s['excluded_utf8']} tokens, {s['rollouts_with_fragments']}/{s['rollouts']} rollouts; rate counting them as non-canonical: {_pct(s['rate_incl_fragments'])}",
         f"- think: {_pct(_rate(think['nc'], think['tokens']))} ({think['nc']} / {think['tokens']}); "
         f"answer: {_pct(_rate(answer['nc'], answer['tokens']))} ({answer['nc']} / {answer['tokens']})",
         f"- sequence-level flag rate at L={list(s['seq_flag_rate'])}: {[_pct(v) for v in s['seq_flag_rate'].values()]}",
