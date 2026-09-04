@@ -357,6 +357,25 @@ the model's most likely token, entropy is over the top-10 renormalized.
 and the lowest non-canonical rate; DPO the lowest entropy and the middle
 rate.)
 
+**Tail depth and where spans start.** Mass beyond the top-10 (the deep
+tail; raw logprobs are a full softmax so the top-10 sum is exact) and the
+rank of the emitted token, overall and at the first token of each
+non-canonical span (byte fragments excluded):
+
+| checkpoint | mass beyond top-10, all positions | at span-first positions | positions sampled beyond top-10 | span-first token at rank 1 / 2–3 / 4–10 / >10 | spans per 1M samples at rank 1 / 2–3 / 4–10 / >10 |
+|---|--:|--:|--:|---|---|
+| Think RL final | 0.0024 | 0.0109 | 0.22% | 79.6 / 12.0 / 5.6 / 2.8% | 21 / 25 / 58 / 288 |
+| Think-DPO | 0.0050 | 0.0347 | 0.49% | 76.4 / 10.2 / 4.2 / 9.2% | 86 / 103 / 208 / 1,848 |
+| RL-Zero-Math | 0.0031 | 0.0186 | 0.31% | 78.6 / 15.3 / 3.7 / 2.4% | 157 / 249 / 264 / 1,358 |
+
+Share of all sampled tokens at rank 1 is 86–88% for all three. Under
+temperature 1 sampling, about three quarters of spans begin with the
+model's argmax token in every checkpoint. For orientation against the
+recommended-settings pilot (Think RL final, temperature 0.6 / top-p 0.95,
+50 prompts): 21 rank-1 spans per million samples would predict about 9
+spans in its 468k tokens if rank-1 events were independent of the
+sampling regime; it observed 0.
+
 ### Launched 2026-09-03: Think RL final at recommended settings, DAPO 500 only
 
 Per plan prediction 15.
