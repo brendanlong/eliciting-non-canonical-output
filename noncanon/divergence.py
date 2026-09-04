@@ -4,22 +4,23 @@
     uv run python -m noncanon.divergence run --model allenai/Olmo-3-7B-Think-DPO out/think-dpo/dapo_sample500
     uv run python -m noncanon.divergence summarize out/divergence/think-dpo ...
 
-For each non-canonical span (from ``metrics/examples.jsonl``) two teacher-forced
-forward passes are run over the same text: the token ids the model actually
-emitted (A) and the canonical re-tokenization of the decoded text (B). The
-two share the prompt and a prefix window of up to ``--before`` emitted tokens
-(shifted forward until it re-encodes to itself, so A and B are identical up
-to the span), then the span and up to ``--after`` following tokens. At every
-byte boundary after the span that both tokenizations share, we record the KL
-divergence between the two next-token distributions (final logits, and the
-logit lens at a subset of layers) and the cosine distance of the residual
-stream at those layers. Spans with another event inside the window are
-skipped so the measured divergence is the span's own.
+For each non-canonical span two teacher-forced forward passes are run over
+the same text with the model's real context: the prompt and every emitted
+token before the span, verbatim, in both. They differ only from the span
+on: A continues with the token ids the model emitted (the span and up to
+``--after`` following tokens), B with the canonical re-tokenization of
+that same text (checked to splice onto the prefix exactly as the
+canonical tokenization of the whole text would). At every byte boundary
+after the span that both share, we record the KL divergence between the
+two next-token distributions (final logits, and the logit lens at a
+subset of layers) and the cosine distance of the residual stream at those
+layers. Spans with another event inside the following window are skipped
+so the measured divergence is the span's own.
 
-Control: in rollouts of the same cell with no event, a random alphabetic word
-token at a matched depth is split into two in-vocabulary pieces (an
-arbitrary non-canonical tokenization of the same text) and measured the same
-way. Rows are written to ``out/divergence/<run>/<arm>.parquet``.
+Control: in rollouts of the same cell with no event, a random alphabetic
+word token at a matched depth is split into two in-vocabulary pieces (an
+arbitrary non-canonical tokenization of the same text) and measured the
+same way. Rows are written to ``out/divergence/<run>/<arm>.parquet``.
 
 ``contagion``: for consecutive spans in a rollout, the log-probability of
 the second span's first emitted token under the context with the first
@@ -56,13 +57,28 @@ SCHEMA = pa.schema([
 
 
 # --- alignment (CPU) ----------------------------------------------------------------
-def canonical_start(an: Analyzer, ids: list[int], start: int, end: int, max_shift: int = 16) -> int | None:
-    """First index in [start, start + max_shift] from which ids[start:end] re-encodes to itself."""
-    for s in range(start, min(end, start + max_shift + 1)):
-        seg = ids[s:end]
+def canonical_suffix(an: Analyzer, prefix: list[int], max_len: int = 64) -> list[int]:
+    """The longest suffix of ``prefix`` (up to ``max_len`` tokens) that re-encodes to itself."""
+    for k in range(min(max_len, len(prefix)), 0, -1):
+        seg = prefix[-k:]
         if an.tok.encode(an.tok.decode(seg), add_special_tokens=False) == seg:
-            return s
-    return None
+            return seg
+    return []
+
+
+def canonical_tail(an: Analyzer, prefix: list[int], tail: list[int]) -> list[int] | None:
+    """Canonical tokenization of ``tail``'s text that splices onto ``prefix`` exactly as the
+    canonical tokenization of the whole text would; None if the join would merge across."""
+    suffix = canonical_suffix(an, prefix)
+    if not suffix:
+        return None
+    canon = an.tok.encode(an.tok.decode(tail), add_special_tokens=False)
+    joined = an.tok.encode(an.tok.decode(suffix + tail), add_special_tokens=False)
+    if joined != suffix + canon:
+        return None
+    if b"".join(an.token_bytes(tail)) != b"".join(an.token_bytes(canon)):
+        return None  # the tail ends inside a multi-byte character; decode() would pad it and misalign byte offsets
+    return canon
 
 
 def shared_boundaries(bytes_a: list[bytes], bytes_b: list[bytes], after_byte: int) -> list[tuple[int, int, int]]:
@@ -75,28 +91,24 @@ def shared_boundaries(bytes_a: list[bytes], bytes_b: list[bytes], after_byte: in
     return [(e, ends_a[e], ends_b[e]) for e in sorted(ends_a) if e >= after_byte and e in ends_b]
 
 
-def build_pair(an: Analyzer, prompt_ids: list[int], ids: list[int], pos: int, span_len: int, before: int, after: int) -> dict | None:
-    """Token sequences A (emitted) and B (canonical) for one span, with the shared boundaries after it."""
-    start = canonical_start(an, ids, max(0, pos - before), pos)
-    if start is None:
-        return None
+def build_pair(an: Analyzer, prompt_ids: list[int], ids: list[int], pos: int, span_len: int, after: int) -> dict | None:
+    """Token sequences A (emitted) and B (canonical from the span on) for one span, with the shared boundaries after it.
+
+    Both keep the prompt and every emitted token before the span verbatim."""
     end = min(len(ids), pos + span_len + after)
-    window = ids[start:end]
-    prefix = ids[start:pos]
-    canon = an.tok.encode(an.tok.decode(window), add_special_tokens=False)
-    if canon[: len(prefix)] != prefix or canon == window:
-        return None  # prefix not reproduced (a merge across the window edge) or nothing differs
-    bytes_a, bytes_b = an.token_bytes(window), an.token_bytes(canon)
-    if b"".join(bytes_a) != b"".join(bytes_b):
-        return None  # the window ends inside a multi-byte character; decode() would pad it and misalign byte offsets
-    span_end_byte = sum(len(b) for b in bytes_a[: pos - start + span_len])
+    prefix, tail = ids[:pos], ids[pos:end]
+    canon = canonical_tail(an, prefix, tail)
+    if canon is None or canon == tail:
+        return None
+    bytes_a, bytes_b = an.token_bytes(tail), an.token_bytes(canon)
+    span_end_byte = sum(len(b) for b in bytes_a[:span_len])
     bounds = shared_boundaries(bytes_a, bytes_b, span_end_byte)
     if not bounds:
         return None
+    offset = len(prompt_ids) + len(prefix)
     return {
-        "a": prompt_ids + window, "b": prompt_ids + canon, "offset": len(prompt_ids), "span_end_a": pos - start + span_len,
-        "span_end_byte": span_end_byte, "prefix_tokens": len(prefix), "prefix_truncated": start > 0,
-        "bounds": bounds,
+        "a": prompt_ids + prefix + tail, "b": prompt_ids + prefix + canon, "offset": offset, "span_end_a": span_len,
+        "span_end_byte": span_end_byte, "prefix_tokens": len(prefix), "prefix_truncated": False, "bounds": bounds,
     }
 
 
@@ -118,8 +130,8 @@ def split_word(an: Analyzer, t: int, rng: random.Random) -> list[int] | None:
     return None
 
 
-def control_pairs(an: Analyzer, records: list[dict], depths: list[int], n: int, before: int, after: int, seed: int) -> list[tuple[dict, dict]]:
-    """Arbitrary re-tokenizations at span-matched depths in event-free rollouts."""
+def control_pairs(an: Analyzer, records: list[dict], depths: list[int], n: int, after: int, seed: int) -> list[tuple[dict, dict]]:
+    """Arbitrary re-tokenizations at span-matched depths in event-free rollouts: A = the split, B = the original tokens."""
     rng = random.Random(seed)
     out, used = [], set()
     tries = 0
@@ -135,19 +147,23 @@ def control_pairs(an: Analyzer, records: list[dict], depths: list[int], n: int, 
         ids = list(rec["token_ids"])
         pos = max(1, min(len(ids) - 8, depth + rng.randint(-24, 24)))
         for p in range(pos, min(pos + 48, len(ids) - 4)):
-            if ids[p] in an.special:
+            if ids[p] in an.special or (rec["prompt_id"], rec["sample"], p) in used:
                 continue
             pieces = split_word(an, ids[p], rng)
             if pieces is None:
                 continue
-            perturbed = ids[:p] + pieces + ids[p + 1:]
-            if (rec["prompt_id"], rec["sample"], p) in used:
+            end = min(len(ids), p + 1 + after)
+            tail_a, tail_b = pieces + ids[p + 1:end], ids[p:end]
+            bytes_a, bytes_b = an.token_bytes(tail_a), an.token_bytes(tail_b)
+            bounds = shared_boundaries(bytes_a, bytes_b, len(bytes_b[0]))
+            if not bounds:
                 continue
-            pair = build_pair(an, list(rec["prompt_token_ids"]), perturbed, p, len(pieces), before, after)
-            if pair is not None:
-                used.add((rec["prompt_id"], rec["sample"], p))
-                out.append((pair, {"prompt_id": rec["prompt_id"], "sample": rec["sample"], "pos": p, "shape": "control-split", "emitted": pieces, "canonical": [ids[p]]}))
-                break
+            used.add((rec["prompt_id"], rec["sample"], p))
+            prompt_ids = list(rec["prompt_token_ids"])
+            pair = {"a": prompt_ids + ids[:p] + tail_a, "b": prompt_ids + ids[:p] + tail_b, "offset": len(prompt_ids) + p, "span_end_a": len(pieces),
+                    "span_end_byte": len(bytes_b[0]), "prefix_tokens": p, "prefix_truncated": False, "bounds": bounds}
+            out.append((pair, {"prompt_id": rec["prompt_id"], "sample": rec["sample"], "pos": p, "shape": "control-split", "emitted": pieces, "canonical": [ids[p]]}))
+            break
     return out
 
 
@@ -164,18 +180,23 @@ class Model:
         n_layers = self.model.config.num_hidden_layers
         self.layers = [l for l in LENS_LAYERS if l < n_layers] + [n_layers]
 
+    def hidden(self, ids: list[int]):
+        """All hidden states of the base model (the last one already normed); no full-vocabulary logits."""
+        torch = self.torch
+        with torch.no_grad():
+            return self.model.model(input_ids=torch.tensor([ids], device=self.device), output_hidden_states=True).hidden_states
+
     def forward(self, ids: list[int], positions: list[int]) -> tuple:
         """Final log-probs, logit-lens log-probs per selected layer, and residual states at ``positions``."""
         torch = self.torch
+        n_layers = self.model.config.num_hidden_layers
         with torch.no_grad():
-            out = self.model(torch.tensor([ids], device=self.device), output_hidden_states=True)
+            hs = self.hidden(ids)
             idx = torch.tensor(positions, device=self.device)
-            final = torch.log_softmax(out.logits[0, idx].float(), -1)
-            hidden = [out.hidden_states[l][0, idx] for l in self.layers]
-            # transformers returns the final entry of hidden_states already passed through the
-            # model's norm; applying it again would double-normalise the last layer.
-            n_layers = self.model.config.num_hidden_layers
+            hidden = [hs[l][0, idx] for l in self.layers]
+            # hs[-1] is already passed through the model's norm; applying it again would double-normalise.
             lens = [torch.log_softmax(self.model.lm_head(h if l == n_layers else self.model.model.norm(h)).float(), -1) for l, h in zip(self.layers, hidden)]
+            final = lens[-1]
         return final, lens, hidden
 
 
@@ -203,7 +224,7 @@ def measure(m: Model, pair: dict, meta: dict, kind: str) -> list[dict]:
     return rows
 
 
-def run_cell(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: Path, before: int, after: int, max_spans: int, per_rollout: int, seed: int) -> None:
+def run_cell(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: Path, after: int, max_spans: int, per_rollout: int, seed: int) -> None:
     an = Analyzer(model_name, revision)
     records = {(r["prompt_id"], r["sample"]): r for r in iter_records(run_dir / f"{arm}.parquet")}
     spans = defaultdict(list)
@@ -221,9 +242,9 @@ def run_cell(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: P
             if e["canonical"] is None:
                 skipped["fragment"] += 1
                 continue
-            lo, hi = e["pos"] - before, e["pos"] + len(e["emitted"]) + after
+            lo, hi = e["pos"], e["pos"] + len(e["emitted"]) + after
             if any(lo <= s < hi for j, s in enumerate(starts) if j != i):
-                skipped["another event in window"] += 1
+                skipped["another event in the following window"] += 1
                 continue
             if kept >= per_rollout:
                 skipped["per-rollout cap"] += 1
@@ -236,19 +257,19 @@ def run_cell(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: P
     rows = []
     for key, e in candidates:
         rec = records[key]
-        pair = build_pair(an, list(rec["prompt_token_ids"]), list(rec["token_ids"]), e["pos"], len(e["emitted"]), before, after)
+        pair = build_pair(an, list(rec["prompt_token_ids"]), list(rec["token_ids"]), e["pos"], len(e["emitted"]), after)
         if pair is None:
-            skipped["prefix not canonical / no shared boundary"] += 1
+            skipped["canonical tail does not splice / no shared boundary"] += 1
             continue
         rows.extend(measure(m, pair, e, "span"))
     n_spans = len({(r["prompt_id"], r["sample"], r["span_pos"]) for r in rows})
     clean = [r for k, r in records.items() if k not in spans and r["finish_reason"] == "stop"]
     depths = [e["pos"] for _, e in candidates] or [256]
-    for pair, meta in control_pairs(an, clean, depths, n_spans, before, after, seed):
+    for pair, meta in control_pairs(an, clean, depths, n_spans, after, seed):
         rows.extend(measure(m, pair, meta, "control"))
     out_dir.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pylist(rows, schema=SCHEMA), out_dir / f"{arm}.parquet")
-    meta = {"model": model_name, "revision": revision, "run_dir": str(run_dir), "arm": arm, "before": before, "after": after, "seed": seed,
+    meta = {"model": model_name, "revision": revision, "run_dir": str(run_dir), "arm": arm, "prefix": "full", "after": after, "seed": seed,
             "candidate_spans": len(candidates), "measured_spans": n_spans, "controls": len({(r['prompt_id'], r['sample'], r['span_pos']) for r in rows if r['kind'] == 'control'}),
             "skipped": dict(skipped), "lens_layers": m.layers, "rows": len(rows)}
     (out_dir / f"{arm}.meta.json").write_text(json.dumps(meta, indent=2))
@@ -323,38 +344,32 @@ CONTAGION_SCHEMA = pa.schema([
 ])
 
 
-def build_contagion_pair(an: Analyzer, prompt_ids: list[int], ids: list[int], p1: int, p2: int, before: int) -> dict | None:
-    """A = emitted ids up to (not including) the target position p2; B = canonical re-tokenization of the same text.
+def build_contagion_pair(an: Analyzer, prompt_ids: list[int], ids: list[int], p1: int, p2: int) -> dict | None:
+    """A = the emitted ids up to (not including) the target position p2; B = the same with ids[p1:p2] canonically re-tokenized.
 
-    Both end at the byte where the target token starts, so the next-token
-    distribution of each is the model's prediction for that token."""
-    start = canonical_start(an, ids, max(0, p1 - before), p1)
-    if start is None:
+    Both keep the prompt and every emitted token before p1 verbatim and end at
+    the byte where the target token starts, so each next-token distribution is
+    the model's prediction for that token."""
+    prefix, tail = ids[:p1], ids[p1:p2]
+    canon = canonical_tail(an, prefix, tail)
+    if canon is None or canon == tail:
         return None
-    window = ids[start:p2]
-    prefix = ids[start:p1]
-    canon = an.tok.encode(an.tok.decode(window), add_special_tokens=False)
-    bytes_a, bytes_b = an.token_bytes(window), an.token_bytes(canon)
-    if canon[: len(prefix)] != prefix or canon == window or b"".join(bytes_a) != b"".join(bytes_b):
-        return None
-    return {"a": prompt_ids + window, "b": prompt_ids + canon, "first_pos": p1, "target_pos": p2}
+    return {"a": prompt_ids + prefix + tail, "b": prompt_ids + prefix + canon, "first_pos": p1, "target_pos": p2}
 
 
 def measure_contagion(m: Model, pair: dict, target_id: int, canonical_id: int) -> dict:
     torch = m.torch
     out = {}
     for key in ("a", "b"):
-        ids = pair[key]
         with torch.no_grad():
-            logits = m.model(torch.tensor([ids], device=m.device)).logits[0, -1].float()
-        logp = torch.log_softmax(logits, -1)
+            logp = torch.log_softmax(m.model.lm_head(m.hidden(pair[key])[-1][0, -1]).float(), -1)
         out[f"logp_{key}"] = float(logp[target_id])
         out[f"logp_{key}_canonical"] = float(logp[canonical_id])
         out[f"rank_{key}"] = int((logp > logp[target_id]).sum().item()) + 1
     return out
 
 
-def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: Path, before: int, max_gap: int, max_pairs: int, seed: int) -> None:
+def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: Path, max_gap: int, max_pairs: int, seed: int) -> None:
     an = Analyzer(model_name, revision)
     records = {(r["prompt_id"], r["sample"]): r for r in iter_records(run_dir / f"{arm}.parquet")}
     spans = defaultdict(list)
@@ -384,9 +399,9 @@ def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_d
     for key, e1, e2 in pairs:
         rec = records[key]
         ids = list(rec["token_ids"])
-        pair = build_contagion_pair(an, list(rec["prompt_token_ids"]), ids, e1["pos"], e2["pos"], before)
+        pair = build_contagion_pair(an, list(rec["prompt_token_ids"]), ids, e1["pos"], e2["pos"])
         if pair is None:
-            skipped["prefix not canonical"] += 1
+            skipped["canonical tail does not splice"] += 1
             continue
         target = ids[e2["pos"]]
         canonical = an.tok.encode("".join(e2["canonical"][:1]), add_special_tokens=False)
@@ -404,7 +419,7 @@ def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_d
         p2 = e1["pos"] + len(e1["emitted"]) + rng.choice(gaps)
         if p2 >= len(ids) or ids[p2] in an.special:
             continue
-        pair = build_contagion_pair(an, list(rec["prompt_token_ids"]), ids, e1["pos"], p2, before)
+        pair = build_contagion_pair(an, list(rec["prompt_token_ids"]), ids, e1["pos"], p2)
         if pair is None:
             continue
         r = measure_contagion(m, pair, ids[p2], ids[p2])
@@ -413,7 +428,7 @@ def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_d
         n_controls += 1
     out_dir.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pylist(rows, schema=CONTAGION_SCHEMA), out_dir / f"{arm}.contagion.parquet")
-    meta = {"model": model_name, "revision": revision, "run_dir": str(run_dir), "arm": arm, "before": before, "max_gap": max_gap, "seed": seed,
+    meta = {"model": model_name, "revision": revision, "run_dir": str(run_dir), "arm": arm, "prefix": "full", "max_gap": max_gap, "seed": seed,
             "candidate_pairs": len(pairs), "measured_pairs": sum(r["kind"] == "pair" for r in rows), "controls": n_controls, "single_span_rollouts": len(singles), "skipped": dict(skipped)}
     (out_dir / f"{arm}.contagion.meta.json").write_text(json.dumps(meta, indent=2))
     print(json.dumps(meta, indent=2))
@@ -453,22 +468,22 @@ def main() -> None:
     f = sub.add_parser("fetch"); f.add_argument("run"); f.add_argument("--prompt-set", default="dapo_sample500"); f.add_argument("--repo", default="brendanlong/noncanonical-post-training")
     r = sub.add_parser("run")
     r.add_argument("run_dir", type=Path); r.add_argument("--model", required=True); r.add_argument("--revision", default="main"); r.add_argument("--arm", default="untruncated")
-    r.add_argument("--out-dir", type=Path, default=None); r.add_argument("--before", type=int, default=4096); r.add_argument("--after", type=int, default=512)
+    r.add_argument("--out-dir", type=Path, default=None); r.add_argument("--after", type=int, default=512)
     r.add_argument("--max-spans", type=int, default=400); r.add_argument("--per-rollout", type=int, default=3); r.add_argument("--seed", type=int, default=0)
     s = sub.add_parser("summarize"); s.add_argument("dirs", nargs="+", help="[label=]out/divergence/<run>"); s.add_argument("--arm", default="untruncated"); s.add_argument("--lens", action="store_true"); s.add_argument("--contagion", action="store_true")
     c = sub.add_parser("contagion", help="second-span probability under the emitted vs re-tokenized first span")
     c.add_argument("run_dir", type=Path); c.add_argument("--model", required=True); c.add_argument("--revision", default="main"); c.add_argument("--arm", default="untruncated")
-    c.add_argument("--out-dir", type=Path, default=None); c.add_argument("--before", type=int, default=2048); c.add_argument("--max-gap", type=int, default=4096)
+    c.add_argument("--out-dir", type=Path, default=None); c.add_argument("--max-gap", type=int, default=4096)
     c.add_argument("--max-pairs", type=int, default=400); c.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if args.cmd == "fetch":
         fetch(args.run, args.prompt_set, args.repo)
     elif args.cmd == "run":
         out_dir = args.out_dir or Path("out/divergence") / args.run_dir.parent.name
-        run_cell(args.run_dir, args.arm, args.model, args.revision, out_dir, args.before, args.after, args.max_spans, args.per_rollout, args.seed)
+        run_cell(args.run_dir, args.arm, args.model, args.revision, out_dir, args.after, args.max_spans, args.per_rollout, args.seed)
     elif args.cmd == "contagion":
         out_dir = args.out_dir or Path("out/divergence") / args.run_dir.parent.name
-        run_contagion(args.run_dir, args.arm, args.model, args.revision, out_dir, args.before, args.max_gap, args.max_pairs, args.seed)
+        run_contagion(args.run_dir, args.arm, args.model, args.revision, out_dir, args.max_gap, args.max_pairs, args.seed)
     else:
         (summarize_contagion if args.contagion else summarize_lens if args.lens else summarize)(args.dirs, args.arm)
 

@@ -1,5 +1,6 @@
-# Downstream divergence at non-canonical spans (teacher-forced forward passes,
-# emitted ids vs canonical re-tokenization), one cell after another on one GPU.
+# Downstream divergence at non-canonical spans (teacher-forced forward passes over
+# the full real prefix, emitted ids vs canonical re-tokenization from the span on),
+# one cell after another on one GPU. MODE=contagion runs the second-span test instead.
 #
 #   sky launch -c nc-div skypilot/divergence.yaml -i 20 --down -y -d --env HF_TOKEN \
 #       --env JOBS="allenai/Olmo-3-7B-Think-DPO:main:think-dpo allenai/Olmo-3-7B-Think:main:think-main"
