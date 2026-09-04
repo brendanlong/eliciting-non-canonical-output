@@ -25,6 +25,15 @@ def test_gap_test_detects_tight_clusters_and_not_uniform_spread():
     assert p > 0.05
 
 
+def test_gap_test_with_texts_keeps_pairs_under_the_shuffle():
+    rows = [rollout(10000, [100, 103, 5000]) for _ in range(30)]
+    for r in rows:
+        r["sample"] = id(r)
+    texts = {(r["prompt_id"], r["sample"], t): s for r in rows for t, s in zip(r["event_positions"], ("x", "x", "y"))}
+    obs, shuf, p, n = gap_test(rows, np.random.default_rng(0), B=100, texts=texts)
+    assert n == 30 and obs == 4897 and shuf > 1000 and p >= 0  # only the (103, 5000) pairs count, in every shuffle too
+
+
 def test_hazard_compares_to_depth_matched_windows():
     rows = [rollout(1000, [100, 130]), rollout(1000, [100]), rollout(1000, [500]), rollout(1000, [])]
     obs, base, n = hazard(rows, 64, np.random.default_rng(0))

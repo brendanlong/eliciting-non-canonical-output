@@ -42,5 +42,5 @@ run: |
         --max-spans "$MAX_SPANS" --out-dir "out/divergence/$RUN_NAME" || exit 1
     uv run python -m noncanon.upload "out/divergence/$RUN_NAME" "divergence/$RUN_NAME" --repo "$HF_DATASET" || { echo ">>> upload failed for $RUN_NAME"; exit 1; }
     # Each 7B checkpoint is ~15 GB; five of them fill the 100 GB disk. Drop the weights once the cell is uploaded.
-    rm -rf ~/.cache/huggingface/hub/models--* "out/$RUN_NAME"
+    rm -rf ~/.cache/huggingface/hub/models--* /workspace/.cache/huggingface/hub/models--* "out/$RUN_NAME"  # RunPod images cache under /workspace
   done

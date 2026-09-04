@@ -37,9 +37,12 @@ WINDOW = 64
 
 
 def poisson_multi(rows: list[dict]) -> tuple[int, int, float]:
-    """(rollouts with ≥1, with ≥2, expected with ≥2 given ≥1 under a Poisson at the cell's rate)."""
-    rate = sum(r["nc_events"] for r in rows) / sum(r["n_units"] for r in rows)
-    flagged = [r for r in rows if r["nc_events"] > 0]
+    """(rollouts with ≥1, with ≥2, expected with ≥2 given ≥1 under a Poisson at the cell's event rate).
+
+    Events are counted as starts (spans and standalone fragments), the same
+    unit as the gaps, not as canonical tokens inside spans."""
+    rate = sum(len(r["event_positions"]) for r in rows) / sum(r["n_units"] for r in rows)
+    flagged = [r for r in rows if r["event_positions"]]
     expected = 0.0
     for r in flagged:
         lam = rate * r["n_units"]
@@ -65,16 +68,24 @@ def hazard(rows: list[dict], W: int, rng: np.random.Generator, draws: int = 20) 
 
 
 def gap_test(rows: list[dict], rng: np.random.Generator, B: int, texts: dict | None = None) -> tuple[float, float, float, int]:
-    """(observed median gap, shuffled median gap, one-sided p that shuffles give a median ≤ observed, gaps)."""
+    """(observed median gap, shuffled median gap, one-sided p that shuffles give a median ≤ observed, gaps).
+
+    With ``texts``, only gaps between consecutive events of different span
+    text count; under the shuffle the texts keep their order and travel
+    with the event ranks, so the same pairs are compared."""
     multi = [r for r in rows if len(r["event_positions"]) >= 2]
+    order = {id(r): [texts.get((r["prompt_id"], r["sample"], t)) for t in sorted(r["event_positions"])] if texts else None for r in multi}
+
     def gaps(positions_by_rollout):
         out = []
         for r, ps in positions_by_rollout:
             ps = sorted(ps)
-            for a, b in zip(ps, ps[1:]):
-                if texts is None or texts.get((r["prompt_id"], r["sample"], a)) != texts.get((r["prompt_id"], r["sample"], b)):
+            labels = order[id(r)]
+            for i, (a, b) in enumerate(zip(ps, ps[1:])):
+                if labels is None or labels[i] != labels[i + 1]:
                     out.append(b - a)
         return out
+
     observed = gaps([(r, r["event_positions"]) for r in multi])
     if not observed:
         return float("nan"), float("nan"), float("nan"), 0
@@ -82,10 +93,10 @@ def gap_test(rows: list[dict], rng: np.random.Generator, B: int, texts: dict | N
     shuffled, hits = [], 0
     for _ in range(B):
         g = gaps([(r, rng.choice(r["n_tokens"], size=len(r["event_positions"]), replace=False)) for r in multi])
-        med = float(np.median(g)) if g else float("nan")
+        med = float(np.median(g))  # the same pairs survive the text filter, so g is never empty when observed is not
         shuffled.append(med)
         hits += med <= obs_med
-    return obs_med, float(np.nanmedian(shuffled)), hits / B, len(observed)
+    return obs_med, float(np.median(shuffled)), hits / B, len(observed)
 
 
 def span_texts(run_dir: Path, arm: str, rows: list[dict]) -> tuple[dict, float]:
@@ -129,7 +140,9 @@ def main() -> None:
         g_obs, g_shuf, g_p, g_n = gap_test(rows, rng, args.B)
         texts, same = span_texts(run, arm or rows[0]["file"].removesuffix(".parquet"), rows)
         d_obs, d_shuf, d_p, d_n = gap_test(rows, rng, args.B, texts)
-        print(f"| {label} | {n1} / {n2} | {exp2:.1f} | {100 * h_obs:.1f}% / {100 * h_base:.1f}% ({h_n}) | {g_obs:.0f} / {g_shuf:.0f} (p = {g_p:.3f}; {g_n}) | {100 * same:.1f}% | {d_obs:.0f} / {d_shuf:.0f} (p = {d_p:.3f}; {d_n}) |")
+        fp = lambda p: f"< {1 / args.B:.4f}" if p == 0 else f"= {p:.3f}"
+        gap = lambda o, sh, p, n: f"{o:.0f} / {sh:.0f} (p {fp(p)}; {n})" if n else "—"
+        print(f"| {label} | {n1} / {n2} | {exp2:.1f} | {100 * h_obs:.1f}% / {100 * h_base:.1f}% ({h_n}) | {gap(g_obs, g_shuf, g_p, g_n)} | {100 * same:.1f}% | {gap(d_obs, d_shuf, d_p, d_n)} |")
 
 
 if __name__ == "__main__":
