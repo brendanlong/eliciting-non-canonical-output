@@ -43,6 +43,24 @@ figures/         the rendered figures and their data
 skypilot/        RunPod task definitions
 ```
 
+## Licenses
+
+The code in this repository (everything outside `prompts/`) is released
+under the MIT license. There is deliberately no top-level LICENSE file,
+because the repository and the HuggingFace dataset also redistribute
+prompt text that is not ours and not MIT:
+
+| data | where | source and license |
+|---|---|---|
+| DAPO-Math-17k problems (`dapo_heldout.jsonl`, `dapo_sample500.jsonl`, `dapo_pilot50.jsonl`, and the `problem` column of every DAPO parquet on the dataset) | `prompts/`, HF dataset | [BytedTsinghua-SIA/DAPO-Math-17k](https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k) via [open-r1/DAPO-Math-17k-Processed](https://huggingface.co/datasets/open-r1/DAPO-Math-17k-Processed), Apache 2.0 |
+| AIME 2024 problems (half of `aime_2024_2025.jsonl` and of the AIME parquets) | `prompts/`, HF dataset | [Maxwell-Jia/AIME_2024](https://huggingface.co/datasets/Maxwell-Jia/AIME_2024), MIT |
+| AIME 2025 problems (the other half) | `prompts/`, HF dataset | [MathArena/aime_2025](https://huggingface.co/datasets/MathArena/aime_2025), CC BY-NC-SA 4.0 |
+
+The AIME problems are competition problems of the Mathematical
+Association of America, redistributed here as those datasets redistribute
+them. The rollouts on the dataset are model output (OLMo-3, Apache 2.0;
+Tulu-3, Llama 3.1 community license) and carry no separate terms.
+
 ## Setup
 
 ```bash
