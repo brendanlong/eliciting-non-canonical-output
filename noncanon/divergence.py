@@ -65,8 +65,10 @@ def canonical_suffix(an: Analyzer, prefix: list[int], max_len: int = 64) -> list
 
 
 def canonical_tail(an: Analyzer, prefix: list[int], tail: list[int]) -> list[int] | None:
-    """Canonical tokenization of ``tail``'s text that splices onto ``prefix`` exactly as the
-    canonical tokenization of the whole text would; None if the join would merge across."""
+    """Canonical tokenization of ``tail``'s text, checked to splice onto ``prefix``: re-encoding the
+    longest self-canonical suffix of the prefix (up to 64 tokens) together with the tail must give
+    that suffix followed by the tail's own canonical tokens. This is a local check (the suffix can be
+    short when a non-canonical span sits just before); None if the join would merge across."""
     suffix = canonical_suffix(an, prefix)
     if not suffix:
         return None
@@ -340,8 +342,9 @@ def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_d
             skipped["canonical tail does not splice"] += 1
             continue
         target = ids[e2["pos"]]
-        canonical = an.tok.encode("".join(e2["canonical"][:1]), add_special_tokens=False)
-        canonical_id = canonical[0] if len(canonical) == 1 else target
+        # The canonical alternative's first token, from the token ids (piece strings are lossy for byte-split characters).
+        canon2 = canonical_tail(an, ids[: e2["pos"]], ids[e2["pos"]: e2["pos"] + len(e2["emitted"])])
+        canonical_id = canon2[0] if canon2 else target
         r = measure_contagion(m, pair, target, canonical_id)
         rows.append({"kind": "pair", "prompt_id": key[0], "sample": int(key[1]), "first_pos": e1["pos"], "target_pos": e2["pos"], "gap": e2["pos"] - (e1["pos"] + len(e1["emitted"])),
                      "same_text": "".join(e1["emitted"]) == "".join(e2["emitted"]), "target_id": target, "canonical_id": canonical_id, **r})
@@ -354,11 +357,16 @@ def run_contagion(run_dir: Path, arm: str, model_name: str, revision: str, out_d
 
 
 def summarize_contagion(dirs: list[str], arm: str) -> None:
-    """Δ = log p(target | emitted context) − log p(target | re-tokenized context); positive favours the non-canonical continuation."""
-    from scipy.stats import wilcoxon
+    """Δ = log p(target | emitted context) − log p(target | re-tokenized context); positive favours the non-canonical continuation.
 
-    print("| cell | kind | pairs | median gap | mean Δ (nats) | median Δ | Δ > 0 | Wilcoxon p | mean Δ for the canonical alternative | rank of target: median A / B |")
-    print("|---|---|--:|--:|--:|--:|--:|--:|--:|--:|")
+    Pairs cluster inside rollouts (a habit span repeated 40 times in one
+    rollout gives 40 pairs), so the tests use rollouts as the unit: each
+    rollout contributes the median Δ of its pairs; the sign test and the
+    Wilcoxon test run on those."""
+    from scipy.stats import binomtest, wilcoxon
+
+    print("| cell | kind | pairs | rollouts | median gap | mean Δ (nats) | median Δ | rollouts with median Δ > 0 | sign test p | Wilcoxon p (rollout medians) | mean Δ for the canonical alternative | rank of target: median A / B |")
+    print("|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|")
     for spec in dirs:
         label, _, d = spec.rpartition("=")
         d = Path(d); label = label or d.name
@@ -371,8 +379,14 @@ def summarize_contagion(dirs: list[str], arm: str) -> None:
             if mask.sum() == 0:
                 continue
             dm = delta[mask]
-            p = wilcoxon(dm).pvalue if len(dm) >= 6 and np.any(dm != 0) else float("nan")
-            print(f"| {label} | {name} | {mask.sum()} | {int(np.median(cols['gap'][mask]))} | {dm.mean():+.3f} | {np.median(dm):+.3f} | {100 * (dm > 0).mean():.0f}% | {p:.2g} | {delta_c[mask].mean():+.3f} | {int(np.median(cols['rank_a'][mask]))} / {int(np.median(cols['rank_b'][mask]))} |")
+            by_rollout = {}
+            for pid, smp, dv in zip(cols["prompt_id"][mask], cols["sample"][mask], dm):
+                by_rollout.setdefault((pid, smp), []).append(dv)
+            medians = np.array([np.median(v) for v in by_rollout.values()])
+            pos, nonzero = int((medians > 0).sum()), int((medians != 0).sum())
+            sign_p = binomtest(pos, nonzero).pvalue if nonzero else float("nan")
+            wil_p = wilcoxon(medians).pvalue if len(medians) >= 6 and nonzero else float("nan")
+            print(f"| {label} | {name} | {mask.sum()} | {len(medians)} | {int(np.median(cols['gap'][mask]))} | {dm.mean():+.3f} | {np.median(dm):+.3f} | {pos}/{len(medians)} | {sign_p:.2g} | {wil_p:.2g} | {delta_c[mask].mean():+.3f} | {int(np.median(cols['rank_a'][mask]))} / {int(np.median(cols['rank_b'][mask]))} |")
 
 
 def fetch(run: str, prompt_set: str, repo: str) -> None:

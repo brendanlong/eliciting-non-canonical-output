@@ -12,7 +12,7 @@ def write_cell(tmp_path, name, arm, flags, correct, tokens=2000, temperature=1.0
     (d / "metrics").mkdir(parents=True)
     with (d / "metrics" / "analysis.jsonl").open("w") as f:
         for i, (flagged, ok) in enumerate(zip(flags, correct)):
-            f.write(json.dumps({"file": f"{arm}.parquet", "finish_reason": "stop", "correct": ok, "n_tokens": tokens, "n_units": tokens,
+            f.write(json.dumps({"file": f"{arm}.parquet", "prompt_id": f"r{i}", "sample": 0, "finish_reason": "stop", "correct": ok, "n_tokens": tokens, "n_units": tokens,
                                 "nc_events": int(flagged), "event_positions": [100] if flagged else []}) + "\n")
     (d / f"{arm}.meta.json").write_text(json.dumps({"sampling": {"temperature": temperature, "top_p": 1.0}}))
     return d
@@ -82,3 +82,16 @@ def test_pairwise_table_annotates_direction_changes(tmp_path, capsys):
     assert rows[0].startswith("| A vs B | 10.0% | 60.0% | ") and "(A higher)" in rows[0] and "(B higher)" not in rows[0]
     assert rows[1].startswith("| correct only: A vs B | 10.0% | 60.0% |")
     assert compare.fmt_p(1.07e-54) == "1e-54" and compare.fmt_p(0.0045) == "0.0045" and compare.fmt_p(0.0253) == "0.025" and compare.fmt_p(0.31) == "0.31"
+
+
+def test_top_spans_table_counts_spans_and_rollouts(tmp_path, capsys):
+    from noncanon import compare
+
+    d = write_cell(tmp_path, "z", "untruncated", [1, 1, 0], [True] * 3)
+    with (d / "metrics" / "examples.jsonl").open("w") as f:
+        for pid, pieces in (("r0", ["a", "b"]), ("r0", ["a", "b"]), ("r1", ["a", "b"]), ("r1", ["c"])):
+            f.write(json.dumps({"file": "untruncated.parquet", "prompt_id": pid, "sample": 0, "pos": 1, "emitted": pieces, "canonical": ["".join(pieces)] if pieces != ["c"] else None}) + "\n")
+    compare.print_top_spans([f"Z={d}"], "untruncated", 3, "all")
+    row = capsys.readouterr().out.splitlines()[-1]
+    assert row.startswith("| Z | 3 | 2 | ") and "`a`+`b` → `ab` (3, 2)" in row  # the fragment (canonical None) is not a span
+    assert compare.pieces_md(["a|b", "\n"]) == "`a\\|b`+`⏎`"  # pipes escaped for GFM table cells
