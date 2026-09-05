@@ -269,7 +269,7 @@ def fig4() -> None:
         top.set_yscale("log")
         top.set_ylim(0.2, 60)
         top.set_yticks([0.3, 1, 3, 10, 30], ["0.3", "1", "3", "10", "30"])
-        top.legend(loc="upper right")
+        top.legend(loc="lower left")
         top.set_xticks(range(len(DISTANCE_BINS)), bin_labels)
         top.set_xlabel("tokens after the span")
     axes[0].set_ylabel("next-token argmax differs,\nemitted vs canonical prefix (%)")
