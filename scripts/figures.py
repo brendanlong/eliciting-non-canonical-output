@@ -36,9 +36,9 @@ STAGE_COLOR = {"SFT": BLUE, "DPO": ORANGE, "RL final": AQUA, "RLVR (PPO)": AQUA,
 
 # (stage label, run holding the temperature-1 arm, run holding the recommended-settings arm)
 LADDERS = {
-    "OLMo-3 Think": [("SFT", "think-sft", None), ("DPO", "think-dpo", "think-dpo-recommended"), ("RL final", "think-main", "think-main-recommended")],
-    "OLMo-3 Instruct": [("SFT", "instruct-sft", "instruct-sft"), ("DPO", "instruct-dpo", "instruct-dpo"), ("RL final", "instruct-main", "instruct-main")],
-    "OLMo-3 RL-Zero-Math": [("step 300", "rlzero-math-step300", None), ("step 2000", "rlzero-math", None)],
+    "OLMo-3-7B Think": [("SFT", "think-sft", None), ("DPO", "think-dpo", "think-dpo-recommended"), ("RL final", "think-main", "think-main-recommended")],
+    "OLMo-3-7B Instruct": [("SFT", "instruct-sft", "instruct-sft"), ("DPO", "instruct-dpo", "instruct-dpo"), ("RL final", "instruct-main", "instruct-main")],
+    "OLMo-3-7B RL-Zero-Math": [("step 300", "rlzero-math-step300", None), ("step 2000", "rlzero-math", None)],
     "Tulu-3-8B": [("SFT", "tulu3-sft", "tulu3-sft"), ("DPO", "tulu3-dpo", "tulu3-dpo"), ("RLVR (PPO)", "tulu3-rlvr", "tulu3-rlvr"), ("3.1 RLVR (GRPO)", "tulu31-rlvr", "tulu31-rlvr")],
 }
 OLMO = {k: v for k, v in LADDERS.items() if k != "Tulu-3-8B"}
@@ -83,7 +83,7 @@ WINDOWS = [(256, "first 256 tokens"), (1024, "first 1,024 tokens"), (4096, "firs
 
 def fig1() -> None:
     widths = [len(v) for v in LADDERS.values()]
-    fig, axes = plt.subplots(1, 4, figsize=(11, 3.8), gridspec_kw={"width_ratios": widths}, sharey=True)
+    fig, axes = plt.subplots(1, 4, figsize=(12.5, 3.8), gridspec_kw={"width_ratios": widths}, sharey=True)
     DATA["fig1"] = {}
     for ax, (family, stages) in zip(axes, LADDERS.items()):
         xs = np.arange(len(stages))
@@ -189,7 +189,7 @@ def fig2() -> None:
     ax.set_ylabel("non-canonical events per million tokens")
     ax.set_ylim(0, 230)
     ax.legend(loc="upper left", ncol=2)
-    fig.suptitle("Olmo-3-7B-RL-Zero-Math over training (RL from the base model; DAPO held-out, temperature 1)", fontsize=10, color=INK, y=1.02)
+    fig.suptitle("OLMo-3-7B RL-Zero-Math over training (RL from the base model; DAPO held-out, temperature 1)", fontsize=10, color=INK, y=1.02)
     save(fig, "fig2_rlzero_steps.png")
 
 

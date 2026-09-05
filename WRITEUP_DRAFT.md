@@ -6,9 +6,9 @@
 
 A language model can emit a token sequence whose decoded text re-tokenizes differently: `light` + `house` where the tokenizer would produce `l` + `ighthouse`. These non-canonical tokens are invisible in a transcript stored as text, so a probe or logit lens run on the re-tokenized text is looking at positions the model never computed, and non-canonical inputs are a known jailbreak vector. I wanted to know how often modern models do this on an ordinary task, which post-training stage moves the rate, and how far the computation diverges afterwards.
 
-I sampled 500 held-out DAPO math problems (and AIME 2024/2025 for three checkpoints) from every released post-training checkpoint of OLMo-3-7B Think and Instruct (SFT, DPO, RL), from six RL steps of OLMo-3-7B-RL-Zero-Math (RL directly on the base model), and from the Tulu-3-8B ladder as a second tokenizer: 16 checkpoints, 75 million generated tokens, emitted ids kept and checked by `encode(decode(ids)) != ids`. The statistic is the fraction of rollouts with at least one non-canonical event (a span or an unfinished multi-byte character).
+I sampled 500 held-out DAPO math problems (and AIME 2024/2025 for three checkpoints) from every released post-training checkpoint of OLMo-3-7B Think and Instruct (SFT, DPO, RL), from six RL steps of OLMo-3-7B RL-Zero-Math (RL directly on the base model), and from the Tulu-3-8B ladder as a second tokenizer: 16 checkpoints, 75 million generated tokens, emitted ids kept and checked by `encode(decode(ids)) != ids`. The statistic is the fraction of rollouts with at least one non-canonical event (a span or an unfinished multi-byte character).
 
-**The answer to the title question.** For a shipped model it is a small problem: the OLMo-3 Think release has an event in 2% of its 9,000-token math rollouts at its recommended sampling settings, and 10% at temperature 1. For intermediate checkpoints it is not small: the DPO checkpoint before it has one in 15% of rollouts at recommended settings and 55% at temperature 1. When an event happens the damage is local. Teacher-forcing the same text as the emitted ids versus their canonical re-tokenization changes the next-token argmax at the span for 12–36% of spans and the two distributions agree again within about 16 tokens (Figure 4).
+**The answer to the title question.** For a shipped model it is a small problem: the OLMo-3-7B Think release has an event in 2% of its 9,000-token math rollouts at its recommended sampling settings, and 10% at temperature 1. For intermediate checkpoints it is not small: the DPO checkpoint before it has one in 15% of rollouts at recommended settings and 55% at temperature 1. When an event happens the damage is local. Teacher-forcing the same text as the emitted ids versus their canonical re-tokenization changes the next-token argmax at the span for 12–36% of spans and the two distributions agree again within about 16 tokens (Figure 4).
 
 **My pre-registered prediction was wrong.** I predicted SFT ≈ DPO < RL, because on-policy RL is the only stage whose loss is computed on the ids the model actually emitted. Instead DPO, which trains on canonical text, raised the flagged fraction from 12% to 55% (Think) and 3% to 21% (Instruct), and on-policy RL brought it back to 10% and 6% (Figure 1). More than half of DPO's excess in Think is one span shape, a standalone space emitted at probability near 1 followed by a tail token; excluding that shape and byte fragments, DPO still flags 23% of rollouts against 10% for SFT and RL.
 
@@ -30,18 +30,18 @@ Three events per cell drawn uniformly (seed 0) from every event the metric flagg
 
 | cell | preceding text | emitted tokens | canonical tokens | position |
 |---|---|---|---|--:|
-| OLMo-3 Think-DPO | `…通常，如果没有队的情` | `�` | (incomplete UTF-8 bytes, no text form) | 170 |
-| OLMo-3 Think-DPO | `…, the possible a's are integers such` | `isme` `aning` | `ism` `ean` `ing` | 1,420 |
-| OLMo-3 Think-DPO | `…: 1 + (exponent of` | `·` `rd` | `·rd` | 909 |
-| OLMo-3 Think RL final | `… wins by girls in those games, W` | `_g` `b` | `_gb` | 3,926 |
-| OLMo-3 Think RL final | `…Therefore substituting into Area_octagon:⏎⏎` | `Area` `oct` | `Are` `ao` `ct` | 5,518 |
-| OLMo-3 Think RL final | `… The image link is to a cdn` | `·art` `of` | `·ar` `to` `f` | 4,946 |
-| OLMo-3 RL-Zero-Math step 2000 | `… tag, in` | `·$` `($` | `·$($` | 3 |
-| OLMo-3 RL-Zero-Math step 2000 | `…}45= (2 + log_` | `3` `5` | `35` | 1,796 |
-| OLMo-3 RL-Zero-Math step 2000 | `…E(50/17,10).⏎⏎` | `Point` `F` | `PointF` | 11,399 |
-| OLMo-3 Instruct-DPO | `…) will rise from 0 up to` | `·half` `way` | `·halfway` | 13,165 |
-| OLMo-3 Instruct-DPO | `…!}{11(10!+11` | `!)` `}\` `)` | `!` `)}` `\)` | 1,523 |
-| OLMo-3 Instruct-DPO | `… out direction) and to \(A\)` | `·(` `_per` | `·(_` `per` | 529 |
+| OLMo-3-7B Think-DPO | `…通常，如果没有队的情` | `�` | (incomplete UTF-8 bytes, no text form) | 170 |
+| OLMo-3-7B Think-DPO | `…, the possible a's are integers such` | `isme` `aning` | `ism` `ean` `ing` | 1,420 |
+| OLMo-3-7B Think-DPO | `…: 1 + (exponent of` | `·` `rd` | `·rd` | 909 |
+| OLMo-3-7B Think RL final | `… wins by girls in those games, W` | `_g` `b` | `_gb` | 3,926 |
+| OLMo-3-7B Think RL final | `…Therefore substituting into Area_octagon:⏎⏎` | `Area` `oct` | `Are` `ao` `ct` | 5,518 |
+| OLMo-3-7B Think RL final | `… The image link is to a cdn` | `·art` `of` | `·ar` `to` `f` | 4,946 |
+| OLMo-3-7B RL-Zero-Math step 2000 | `… tag, in` | `·$` `($` | `·$($` | 3 |
+| OLMo-3-7B RL-Zero-Math step 2000 | `…}45= (2 + log_` | `3` `5` | `35` | 1,796 |
+| OLMo-3-7B RL-Zero-Math step 2000 | `…E(50/17,10).⏎⏎` | `Point` `F` | `PointF` | 11,399 |
+| OLMo-3-7B Instruct-DPO | `…) will rise from 0 up to` | `·half` `way` | `·halfway` | 13,165 |
+| OLMo-3-7B Instruct-DPO | `…!}{11(10!+11` | `!)` `}\` `)` | `!` `)}` `\)` | 1,523 |
+| OLMo-3-7B Instruct-DPO | `… out direction) and to \(A\)` | `·(` `_per` | `·(_` `per` | 529 |
 
 Most events are seams between ordinary tokens (`isme`+`aning`, `Area`+`oct`): the model picked a plausible segmentation of an uncommon word rather than sampling from the deep tail. The RL-Zero row at position 3 is the ` $($` habit discussed above. The OLMo-3 tokenizer has one-, two- and three-digit tokens, so digits can be non-canonical (`3`+`5` for `35`), which is the case that matters most for arithmetic probes. The Think-DPO byte fragment sits in a stretch of Chinese; DPO's byte fragments are mostly like that.
 
@@ -82,8 +82,8 @@ Figure 1 is the main result, length-matched. On whole rollouts at temperature 1 
 
 | family | SFT | DPO | RL final |
 |---|--:|--:|--:|
-| OLMo-3 Think | 11.8% | 55.0% | 10.2% |
-| OLMo-3 Instruct | 3.4% | 21.0% | 6.2% |
+| OLMo-3-7B Think | 11.8% | 55.0% | 10.2% |
+| OLMo-3-7B Instruct | 3.4% | 21.0% | 6.2% |
 
 In both tracks the DPO checkpoint flags far more rollouts than the SFT checkpoint before it (Fisher p = 7e-50 and 1e-18), and the on-policy RL checkpoint flags far fewer than DPO (p = 1e-54 and 6e-12), ending level with SFT in Think (p = 0.48) and slightly above it in Instruct (p = 0.053). Mean rollout length barely changes across the Think ladder (8.2k, 8.2k, 9.3k tokens), so this is not a length effect there. Instruct-SFT is a different case: its rollouts are short (538 tokens against 3.4k and 2.5k) and it mostly fails the task, so the Instruct SFT→DPO comparison is between a model that answers and one that does not, and the length-matched view cannot separate that gap from length.
 

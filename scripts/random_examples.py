@@ -15,8 +15,8 @@ import json
 import random
 from pathlib import Path
 
-CELLS = [("OLMo-3 Think-DPO", "think-dpo"), ("OLMo-3 Think RL final", "think-main"),
-         ("OLMo-3 RL-Zero-Math step 2000", "rlzero-math"), ("OLMo-3 Instruct-DPO", "instruct-dpo")]
+CELLS = [("OLMo-3-7B Think-DPO", "think-dpo"), ("OLMo-3-7B Think RL final", "think-main"),
+         ("OLMo-3-7B RL-Zero-Math step 2000", "rlzero-math"), ("OLMo-3-7B Instruct-DPO", "instruct-dpo")]
 
 
 def show(tokens: list[str] | None) -> str:
