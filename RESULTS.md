@@ -142,7 +142,11 @@ run at temperature 1, so those cells are absent.
 ### 4. Released checkpoints at their recommended settings, DAPO
 
 The fully trained checkpoint of each track as shipped: Think RL final and
-Instruct RL final at 0.6 / 0.95, Tulu-3 RLVR and Tulu-3.1 at 0.6 / 0.9,
+Instruct RL final at 0.6 / 0.95 (the OLMo-3 model cards' stated
+recommendation), Tulu-3 RLVR and Tulu-3.1 at 0.6 / 0.9 (their
+`generation_config.json`, inherited from Llama-3.1; the Tulu model cards
+give no usage recommendation and list temperature 1.0 only as the RLVR
+training rollout temperature),
 and RL-Zero-Math step 2,000, which ships no sampling settings and is
 shown at temperature 1 / top-p 1.
 
@@ -896,7 +900,11 @@ Different base and tokenizer (Llama-3 128k vocabulary, three-digit
 number tokens), the recipe OLMo-3 Instruct descends from (SFT → DPO →
 RLVR via open-instruct; Tulu 3.1 = the same RLVR stage redone with GRPO
 instead of PPO plus hyperparameter retuning, per its model card, *not* a
-longer run of the same recipe). Recommended = 0.6 / 0.9. This family solves few DAPO problems
+longer run of the same recipe). Recommended = 0.6 / 0.9, from
+`generation_config.json`, which Tulu inherits from Llama-3.1; the Tulu
+model cards give no usage recommendation (their "generation temperature
+1.0" is the RLVR training rollout setting, i.e. this family's
+untruncated arm is its training-matched one). This family solves few DAPO problems
 (4–20%), so most rollouts land in the "incorrect" bucket; "parsed-only"
 is as above (correct + incorrect buckets).
 
