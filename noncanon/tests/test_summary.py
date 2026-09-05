@@ -110,3 +110,12 @@ def test_textstats_counts_cjk_and_whitespace_first_spans(tmp_path):
     s = textstats.stats(d, "untruncated")
     assert s["with_cjk"] == 1 and abs(s["cjk_per_100k"] - 1e5 * 2 / len("hello 所以 worldplain")) < 1e-6
     assert s["ws_first"] == 2 and s["second"]["byte fragment"] == 1 and s["second"]["other"] == 1 and s["frag_after_space"] == 1
+
+
+def test_buckets_table_reports_each_outcome_with_a_fisher_test(tmp_path, capsys):
+    from noncanon import compare
+
+    d = write_cell(tmp_path, "b", "untruncated", [1, 1, 0, 0, 1, 0], [True, True, False, False, None, None])
+    compare.print_buckets([f"B={d}"], "untruncated")
+    row = capsys.readouterr().out.splitlines()[-1]
+    assert row.startswith("| B | 2/2 = 100.0% | 0/2 = 0.0% | ") and "| 2/4 = 50.0% | 1/2 = 50.0% |" in row and row.endswith("| — |")
