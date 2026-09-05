@@ -3,6 +3,7 @@
 
     uv run python scripts/figures.py                # all figures into figures/, plus figures/data.json
     uv run python scripts/figures.py 1 4            # only figures 1 and 4
+    uv run python scripts/figures.py 5              # figure 1 at the recommended sampling settings
 
 Figure 3 needs the rollout parquet (with logprobs) of the OLMo-3 Think and
 RL-Zero-Math cells; figure 4 needs out/divergence/<run>/untruncated.parquet.
@@ -81,17 +82,23 @@ def save(fig, name: str) -> None:
 WINDOWS = [(256, "first 256 tokens"), (1024, "first 1,024 tokens"), (4096, "first 4,096 tokens")]
 
 
-def fig1() -> None:
-    widths = [len(v) for v in LADDERS.values()]
-    fig, axes = plt.subplots(1, 4, figsize=(12.5, 3.8), gridspec_kw={"width_ratios": widths}, sharey=True)
-    DATA["fig1"] = {}
-    for ax, (family, stages) in zip(axes, LADDERS.items()):
+def fig1(arm: str = "untruncated") -> None:
+    """Length-matched ladder; ``arm="recommended"`` uses each checkpoint's recommended settings (cells without one are dropped)."""
+    idx = 1 if arm == "untruncated" else 2
+    ladders = {fam: [st for st in stages if st[idx]] for fam, stages in LADDERS.items()}
+    ladders = {fam: stages for fam, stages in ladders.items() if stages}
+    widths = [len(v) for v in ladders.values()]
+    fig, axes = plt.subplots(1, len(ladders), figsize=(12.5 * sum(widths) / 12, 3.8), gridspec_kw={"width_ratios": widths}, sharey=True)
+    key = "fig1" if arm == "untruncated" else "fig1_recommended"
+    DATA[key] = {}
+    for ax, (family, stages) in zip(axes, ladders.items()):
         xs = np.arange(len(stages))
         for j, ((L, wlabel), color) in enumerate(zip(WINDOWS, ORDINAL[:3])):
             pts = []
-            for i, (stage, run, _) in enumerate(stages):
-                p, lo, hi, k, n = flag_pct(rows(run, "untruncated"), L)
-                DATA["fig1"][f"{family} | {stage} | {wlabel}"] = {"pct": p, "lo": lo, "hi": hi, "k": k, "n": n}
+            for i, (stage, *runs) in enumerate(stages):
+                run = runs[idx - 1]
+                p, lo, hi, k, n = flag_pct(rows(run, arm), L)
+                DATA[key][f"{family} | {stage} | {wlabel}"] = {"pct": p, "lo": lo, "hi": hi, "k": k, "n": n}
                 if n >= 10:
                     pts.append((i, p, lo, hi, n))
             if not pts:
@@ -105,11 +112,12 @@ def fig1() -> None:
         ax.set_title(family)
         ax.set_xlim(-0.6, len(stages) - 0.4)
     axes[0].set_ylabel("rollouts with a non-canonical event in the window,\namong rollouts at least that long (%)")
-    axes[0].set_ylim(0, 62)
+    axes[0].set_ylim(0, 62 if arm == "untruncated" else 25)
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.97), ncol=3)
-    fig.suptitle("Non-canonical output by post-training stage, length-matched (DAPO held-out, temperature 1 / top-p 1, Wilson 95%; windows with <10 eligible rollouts omitted)", fontsize=9.5, color=INK, y=1.09)
-    save(fig, "fig1_stages.png")
+    settings = "temperature 1 / top-p 1" if arm == "untruncated" else "each checkpoint's recommended settings"
+    fig.suptitle(f"Non-canonical output by post-training stage, length-matched (DAPO held-out, {settings}, Wilson 95%; windows with <10 eligible rollouts omitted)", fontsize=9.5, color=INK, y=1.09)
+    save(fig, "fig1_stages.png" if arm == "untruncated" else "fig1_stages_recommended.png")
 
 
 # --- 2. RL-Zero-Math over training steps ---------------------------------------------
@@ -264,7 +272,7 @@ def fig4() -> None:
     save(fig, "fig4_divergence.png")
 
 
-FIGS = {1: fig1, 2: fig2, 3: fig3, 4: fig4}
+FIGS = {1: fig1, 2: fig2, 3: fig3, 4: fig4, 5: lambda: fig1("recommended")}
 
 
 def main() -> None:
