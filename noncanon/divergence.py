@@ -239,7 +239,7 @@ def n_spans(c: dict[str, np.ndarray], mask: np.ndarray) -> int:
 
 
 def summarize(dirs: list[str], arm: str) -> None:
-    print("| cell | kind | spans | boundaries | " + " | ".join(f"KL(A‖B) at {lo}–{hi if hi < 10**9 else '∞'} tokens after: mean / median / top-1 differs" for lo, hi in DISTANCE_BINS) + " |")
+    print("| cell | kind | spans | boundaries | " + " | ".join(f"{lo}–{hi if hi < 10**9 else '∞'} tokens after the span: argmax differs / mean KL(A‖B) / median KL (boundaries)" for lo, hi in DISTANCE_BINS) + " |")
     print("|---|---|--:|--:|" + "---|" * len(DISTANCE_BINS))
     for spec in dirs:
         label, _, d = spec.rpartition("=")
@@ -252,7 +252,7 @@ def summarize(dirs: list[str], arm: str) -> None:
             cells = []
             for lo, hi in DISTANCE_BINS:
                 y = m & (c["distance_tokens"] >= lo) & (c["distance_tokens"] <= hi)
-                cells.append(f"{c['kl_ab'][y].mean():.3f} / {np.median(c['kl_ab'][y]):.4f} / {100 * (1 - c['top1_agree'][y].mean()):.1f}% (n={y.sum()})" if y.any() else "—")
+                cells.append(f"**{100 * (1 - c['top1_agree'][y].mean()):.1f}%** / {c['kl_ab'][y].mean():.3f} / {np.median(c['kl_ab'][y]):.4f} ({y.sum()})" if y.any() else "—")
             print(f"| {label} | {kind} | {n_spans(c, m)} | {m.sum()} | " + " | ".join(cells) + " |")
 
 
