@@ -91,6 +91,7 @@ def test_top_spans_table_counts_spans_and_rollouts(tmp_path, capsys):
     with (d / "metrics" / "examples.jsonl").open("w") as f:
         for pid, pieces in (("p", ["a", "b"]), ("p", ["a", "b"]), ("q", ["a", "b"]), ("q", ["c"])):
             f.write(json.dumps({"file": "untruncated.parquet", "prompt_id": pid, "sample": 0, "pos": 1, "emitted": pieces, "canonical": ["".join(pieces)] if pieces != ["c"] else None}) + "\n")
-    compare.print_top_spans([f"Z={d}"], "untruncated", 3)
+    compare.print_top_spans([f"Z={d}"], "untruncated", 3, "all")
     row = capsys.readouterr().out.splitlines()[-1]
-    assert row.startswith("| Z | 3 | 2 | ") and "`a|b` → `ab` (3, 2)" in row  # the fragment (canonical None) is not a span
+    assert row.startswith("| Z | 3 | 2 | ") and "`a`+`b` → `ab` (3, 2)" in row  # the fragment (canonical None) is not a span
+    assert compare.pieces_md(["a|b", "\n"]) == "`a\\|b`+`⏎`"  # pipes escaped for GFM table cells

@@ -152,12 +152,33 @@ def fmt_p(p: float) -> str:
     return f"{p:.0e}" if p < 0.001 else (f"{p:.4f}" if p < 0.01 else (f"{p:.3f}" if p < 0.1 else f"{p:.2f}"))
 
 
-def print_table(specs: list[str], arm: str | None, outcome_filter: str) -> None:
-    print("| cell | rollouts | with ≥1 event | Wilson 95% | " + " | ".join(f"within first {L} (of those ≥ {L})" for L in SEQ_LENGTHS) + " | per-token rate |")
-    print("|---|--:|--:|---|" + "---|" * len(SEQ_LENGTHS) + "--:|")
+def without_span(rows: list[dict], run: Path, arm_name: str, outcome_filter: str, text: str) -> list[dict]:
+    """Rows with every span whose emitted text equals ``text`` removed from the events (flags only; rates are not recomputed).
+
+    Spans (examples.jsonl, raw-index order) and event ordinals are both monotone in position, so they pair by rank;
+    a rollout whose counts differ (a fragment adjacent to a span) is left unchanged."""
+    by_rollout = span_texts_by_rollout(run, arm_name, outcome_filter)
+    out = []
+    for r in rows:
+        es = sorted(by_rollout.get((r["prompt_id"], r["sample"]), []), key=lambda e: e["pos"])
+        positions = sorted(r["event_positions"])
+        if len(es) != len(positions):
+            out.append(r)
+            continue
+        kept = [pos for pos, e in zip(positions, es) if "".join(e["emitted"]) != text]
+        out.append({**r, "event_positions": kept, "nc_events": len(kept), "n_units": r["n_units"]})
+    return out
+
+
+def print_table(specs: list[str], arm: str | None, outcome_filter: str, drop_span: str | None = None) -> None:
+    rate_col = " | per-token rate |" if drop_span is None else " |"
+    print("| cell | rollouts | with ≥1 event | Wilson 95% | " + " | ".join(f"within first {L} (of those ≥ {L})" for L in SEQ_LENGTHS) + rate_col)
+    print("|---|--:|--:|---|" + "---|" * len(SEQ_LENGTHS) + ("--:|" if drop_span is None else ""))
     for spec in specs:
         label, run, cell_arm = parse_spec(spec, arm)
         rows = load_rows(run, cell_arm, outcome_filter)
+        if drop_span is not None:
+            rows = without_span(rows, run, rows[0]["file"].removesuffix(".parquet"), outcome_filter, drop_span)
         k, n = flags(rows)
         lo, hi = wilson(k, n)
         cells = []
@@ -166,7 +187,8 @@ def print_table(specs: list[str], arm: str | None, outcome_filter: str) -> None:
             cells.append(f"{kL}/{nL} = {100 * kL / nL:.1f}%" + ("" if nL >= MIN_ELIGIBLE else " †") if nL else "—")
         rate = sum(r["nc_events"] for r in rows) / max(1, sum(r["n_units"] for r in rows))
         frac = f"{k} ({100 * k / n:.1f}%)" if n else "0 (n/a)"
-        print(f"| {label} | {n} | {frac} | {100 * lo:.1f}–{100 * hi:.1f}% | " + " | ".join(cells) + f" | {100 * rate:.4f}% |")
+        tail = f" | {100 * rate:.4f}% |" if drop_span is None else " |"
+        print(f"| {label} | {n} | {frac} | {100 * lo:.1f}–{100 * hi:.1f}% | " + " | ".join(cells) + tail)
 
 
 def print_pairs(specs: list[str], arm: str | None, seed: int, default_outcome: str = "all") -> None:
@@ -217,30 +239,43 @@ def print_pairs(specs: list[str], arm: str | None, seed: int, default_outcome: s
         print(f"| {label} | " + " | ".join(out) + " |")
 
 
-def print_top_spans(specs: list[str], arm: str | None, n: int) -> None:
-    """The most common non-canonical spans of each cell: emitted pieces → canonical pieces, count, rollouts."""
-    import json
+def pieces_md(pieces: list[str]) -> str:
+    """Token pieces as adjacent code spans joined by +, safe inside a GFM table cell."""
+    return "+".join("`" + p.replace("|", "\\|").replace("\n", "⏎") + "`" for p in pieces)
+
+
+def span_texts_by_rollout(run: Path, arm_name: str, outcome_filter: str) -> dict[tuple, list[dict]]:
+    """Span examples (fragments excluded) per rollout of one arm, restricted to the outcome bucket."""
+    keep = {(r["prompt_id"], r["sample"]) for r in load_rows(run, arm_name, outcome_filter)}
+    out: dict[tuple, list[dict]] = {}
+    for line in (run / "metrics" / "examples.jsonl").open():
+        e = json.loads(line)
+        if e["file"].startswith(arm_name) and e["canonical"] is not None and (e["prompt_id"], e["sample"]) in keep:
+            out.setdefault((e["prompt_id"], e["sample"]), []).append(e)
+    return out
+
+
+def print_top_spans(specs: list[str], arm: str | None, n: int, outcome_filter: str) -> None:
+    """The most common non-canonical spans of each cell: emitted pieces → canonical pieces, count, rollouts.
+
+    Spans only: rollouts whose sole events are byte fragments are not counted here, so the
+    rollout column can be slightly below the flagged count of the cell table."""
     from collections import Counter
 
     print("| cell | spans | rollouts with spans | most common spans: emitted → canonical (count, rollouts) |")
     print("|---|--:|--:|---|")
     for spec in specs:
         label, run, cell_arm = parse_spec(spec, arm)
-        rows = load_rows(run, cell_arm)
-        arm_name = rows[0]["file"].removesuffix(".parquet")
+        arm_name = load_rows(run, cell_arm)[0]["file"].removesuffix(".parquet")
+        by_rollout = span_texts_by_rollout(run, arm_name, outcome_filter)
         counts, rollouts = Counter(), {}
-        total, flagged = 0, set()
-        for line in (run / "metrics" / "examples.jsonl").open():
-            e = json.loads(line)
-            if not e["file"].startswith(arm_name) or e["canonical"] is None:
-                continue
-            key = ("|".join(e["emitted"]), "|".join(e["canonical"]))
-            counts[key] += 1
-            rollouts.setdefault(key, set()).add((e["prompt_id"], e["sample"]))
-            total += 1
-            flagged.add((e["prompt_id"], e["sample"]))
-        top = "; ".join(f"`{em}` → `{ca}` ({c}, {len(rollouts[(em, ca)])})".replace("\n", "⏎") for (em, ca), c in counts.most_common(n))
-        print(f"| {label} | {total} | {len(flagged)} | {top} |")
+        for key, es in by_rollout.items():
+            for e in es:
+                k = (tuple(e["emitted"]), tuple(e["canonical"]))
+                counts[k] += 1
+                rollouts.setdefault(k, set()).add(key)
+        top = "; ".join(f"{pieces_md(list(em))} → {pieces_md(list(ca))} ({cnt}, {len(rollouts[(em, ca)])})" for (em, ca), cnt in counts.most_common(n))
+        print(f"| {label} | {sum(counts.values())} | {len(by_rollout)} | {top} |")
 
 
 # --- CLI ----------------------------------------------------------------------------
@@ -254,16 +289,17 @@ def main() -> None:
     ap.add_argument("--table", action="store_true", help="print rollout-level numbers for every run given, no tests")
     ap.add_argument("--pairs", action="store_true", help="print the pairwise-test table for the pair specs given")
     ap.add_argument("--top-spans", type=int, default=0, metavar="N", help="print the N most common spans of every run given")
+    ap.add_argument("--without-span", default=None, metavar="TEXT", help="with --table: drop every span whose emitted text equals TEXT before computing the flags")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if args.table:
-        print_table(args.runs, args.arm, args.outcome)
+        print_table(args.runs, args.arm, args.outcome, args.without_span)
         return
     if args.pairs:
         print_pairs(args.runs, args.arm, args.seed, args.outcome)
         return
     if args.top_spans:
-        print_top_spans(args.runs, args.arm, args.top_spans)
+        print_top_spans(args.runs, args.arm, args.top_spans, args.outcome)
         return
     assert len(args.runs) == 2, "pass exactly two run directories (or --table / --pairs)"
     a, b = map(Path, args.runs)
