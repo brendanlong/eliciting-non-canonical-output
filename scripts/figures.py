@@ -4,6 +4,8 @@
     uv run python scripts/figures.py                # all figures into figures/, plus figures/data.json
     uv run python scripts/figures.py 1 4            # only figures 1 and 4
     uv run python scripts/figures.py 5              # figure 1 at the recommended sampling settings
+    uv run python scripts/figures.py 6              # DAPO vs AIME, same model
+    uv run python scripts/figures.py 7              # correct vs incorrect rollouts
 
 Figure 3 needs the rollout parquet (with logprobs) of the OLMo-3 Think and
 RL-Zero-Math cells; figure 4 needs out/divergence/<run>/untruncated.parquet.
@@ -281,7 +283,81 @@ def fig4() -> None:
     save(fig, "fig4_divergence.png")
 
 
-FIGS = {1: fig1, 2: fig2, 3: fig3, 4: fig4, 5: lambda: fig1("recommended")}
+# --- 6. DAPO vs AIME, same model -------------------------------------------------------
+AIME = "aime_2024_2025"
+AIME_CELLS = [("OLMo-3-7B Think-DPO", "think-dpo"), ("OLMo-3-7B Think RL final", "think-main"), ("OLMo-3-7B RL-Zero-Math step 2000", "rlzero-math")]
+
+
+def fig6() -> None:
+    """Whole-rollout and length-window flag rates on DAPO (500 × 1) and AIME 2024/2025 (60 × 8), temperature 1."""
+    DATA["fig6"] = {}
+    windows = [(None, "whole rollout")] + WINDOWS
+    fig, axes = plt.subplots(1, len(AIME_CELLS), figsize=(12.5, 3.8), sharey=True)
+    for ax, (label, run) in zip(axes, AIME_CELLS):
+        means = []
+        for j, (prompt_set, name, color) in enumerate((("dapo_sample500", "DAPO held-out", BLUE), (AIME, "AIME 2024/2025", ORANGE))):
+            rs = rows(run, "untruncated", prompt_set)
+            mean_len = np.mean([r["n_tokens"] for r in rs])
+            means.append(mean_len)
+            pts = []
+            for i, (L, wlabel) in enumerate(windows):
+                pct, lo, hi, k, n = flag_pct(rs, L)
+                DATA["fig6"][f"{label} | {name} | {wlabel}"] = {"pct": pct, "lo": lo, "hi": hi, "k": k, "n": n, "mean_tokens": float(mean_len)}
+                if n >= 10:
+                    pts.append((i, pct, lo, hi))
+            x = np.array([i for i, *_ in pts]) + (j - 0.5) * 0.36
+            ax.bar(x, [p[1] for p in pts], width=0.34, color=color, label=name, zorder=2)
+            errbar(ax, x, [p[1] for p in pts], [p[2] for p in pts], [p[3] for p in pts])
+            for xi, (_, pct, _, hi) in zip(x, pts):
+                ax.text(xi, hi + 1, f"{pct:.0f}", ha="center", va="bottom", fontsize=7, color=INK2)
+        ax.set_xticks(range(len(windows)), [w[1] for w in windows], rotation=20, ha="right")
+        ax.set_title(f"{label}\nmean length: DAPO {means[0]:,.0f}, AIME {means[1]:,.0f} tokens", fontsize=9)
+    axes[0].set_ylabel("rollouts with a non-canonical event (%)")
+    axes[0].set_ylim(0, 80)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.97), ncol=2)
+    fig.suptitle("Same model, two prompt sets: whole-rollout rates differ, length-matched windows do not (DAPO 500 × 1, AIME 60 × 8; temperature 1 / top-p 1, Wilson 95%)", fontsize=9.5, color=INK, y=1.09)
+    save(fig, "fig6_dapo_vs_aime.png")
+
+
+# --- 7. correct vs incorrect rollouts ------------------------------------------------
+def fig7() -> None:
+    """Whole-rollout flag rate among correct and among incorrect rollouts, every stage, temperature 1 (buckets with <10 rollouts omitted)."""
+    from noncanon.metrics import outcome
+
+    DATA["fig7"] = {}
+    ladders = {fam: [st for st in stages if st[1]] for fam, stages in LADDERS.items()}
+    widths = [len(v) for v in ladders.values()]
+    fig, axes = plt.subplots(1, len(ladders), figsize=(12.5, 3.8), gridspec_kw={"width_ratios": widths}, sharey=True)
+    for ax, (family, stages) in zip(axes, ladders.items()):
+        for j, (bucket, color) in enumerate((("correct", AQUA), ("incorrect", ORANGE))):
+            pts = []
+            for i, (stage, run, _) in enumerate(stages):
+                rs = [r for r in rows(run, "untruncated") if outcome(r) == bucket]
+                pct, lo, hi, k, n = flag_pct(rs)
+                mean_len = float(np.mean([r["n_tokens"] for r in rs])) if rs else float("nan")
+                DATA["fig7"][f"{family} | {stage} | {bucket}"] = {"pct": pct, "lo": lo, "hi": hi, "k": k, "n": n, "mean_tokens": mean_len}
+                if n >= 10:
+                    pts.append((i, pct, lo, hi, n))
+            if not pts:
+                continue
+            x = np.array([i for i, *_ in pts]) + (j - 0.5) * 0.36
+            ax.bar(x, [p[1] for p in pts], width=0.34, color=color, label=bucket, zorder=2)
+            errbar(ax, x, [p[1] for p in pts], [p[2] for p in pts], [p[3] for p in pts])
+            for xi, (_, pct, _, hi, n) in zip(x, pts):
+                ax.text(xi, hi + 1, f"{pct:.0f}\nn={n}", ha="center", va="bottom", fontsize=6.5, color=INK2, linespacing=0.9)
+        ax.set_xticks(range(len(stages)), [s[0] for s in stages], rotation=20, ha="right")
+        ax.set_title(family)
+        ax.set_xlim(-0.6, len(stages) - 0.4)
+    axes[0].set_ylabel("rollouts with a non-canonical event (%)")
+    axes[0].set_ylim(0, 100)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.97), ncol=2)
+    fig.suptitle("Correct vs incorrect rollouts, whole rollout (DAPO held-out, temperature 1 / top-p 1, Wilson 95%; buckets with <10 rollouts omitted)", fontsize=9.5, color=INK, y=1.09)
+    save(fig, "fig7_correct_vs_incorrect.png")
+
+
+FIGS = {1: fig1, 2: fig2, 3: fig3, 4: fig4, 5: lambda: fig1("recommended"), 6: fig6, 7: fig7}
 
 
 def main() -> None:
