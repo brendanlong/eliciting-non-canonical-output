@@ -77,3 +77,14 @@ def test_contagion_pair_ends_where_the_target_token_starts(an):
     assert pair is not None and pair["a"] == [9] + ids[:p2] and pair["b"] != pair["a"]
     assert b"".join(an.token_bytes(pair["a"][1:])) == b"".join(an.token_bytes(pair["b"][1:]))  # same text, so the next token starts at the same byte
     assert build_contagion_pair(an, [], enc(an, "Nothing non-canonical anywhere here at all"), 2, 6) is None
+
+
+def test_deviation_index_is_the_token_that_breaks_canonicity(an):
+    from noncanon.tail import deviation_index
+
+    light, house = enc(an, " light"), enc(an, "house")
+    assert deviation_index(an, light + house) == 1  # " light" alone re-encodes to itself; "house" breaks it
+    space, dot = enc(an, " "), enc(an, ".")
+    assert deviation_index(an, space + dot) == 1
+    canon = enc(an, " lighthouse keeper")
+    assert deviation_index(an, canon) == len(canon) - 1  # a canonical sequence never breaks: last index by convention

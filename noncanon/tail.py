@@ -29,7 +29,7 @@ KS = (1, 2, 3, 5, 10)
 def band_shares(ranks: np.ndarray) -> str:
     if not len(ranks):
         return "n/a"
-    return " / ".join(f"{100 * ((ranks >= lo) & (ranks <= hi)).mean():.1f}%" for lo, hi in BANDS)
+    return " / ".join(f"{100 * ((ranks >= lo) & (ranks <= hi)).mean():.0f}%" for lo, hi in BANDS)
 
 
 def per_million(span_ranks: np.ndarray, ranks: np.ndarray) -> str:
@@ -94,15 +94,61 @@ def analyze_run(an: Analyzer, run_dir: Path) -> None:
     print(f"  other spans per 1M samples in each rank band:               " + per_million(other_first, ranks))
 
 
+def deviation_index(an: Analyzer, span_ids: list[int]) -> int:
+    """Index of the first emitted token after which the span's tokens so far no longer re-encode to themselves.
+
+    The first token of a minimal-diff span is often a legitimate prefix (a bare
+    space before a digit, ` light` before `house`), so the decision that made
+    the string non-canonical is usually the second token."""
+    for k in range(len(span_ids)):
+        if an.tok.encode(an.tok.decode(span_ids[: k + 1]), add_special_tokens=False) != span_ids[: k + 1]:
+            return k
+    return len(span_ids) - 1
+
+
+def print_deviation_table(an: Analyzer, specs: list[str], default_arm: str | None) -> None:
+    """Per cell: rank bands of the span's first token and of its deviating token, and where the deviation sits."""
+    import json
+
+    from noncanon.compare import load_rows, parse_spec
+
+    print("| cell | spans | first-token rank: 1 / 2–3 / 4–10 / beyond top-10 | deviating-token rank: 1 / 2–3 / 4–10 / beyond top-10 | deviation at token 1 / 2 / later |")
+    print("|---|--:|---|---|---|")
+    for spec in specs:
+        label, run, arm = parse_spec(spec, default_arm)
+        arm_name = load_rows(run, arm)[0]["file"].removesuffix(".parquet")
+        recs = {(r["prompt_id"], r["sample"]): r for r in iter_records(run / f"{arm_name}.parquet")}
+        first, dev, where = [], [], Counter()
+        for line in (run / "metrics" / "examples.jsonl").open():
+            e = json.loads(line)
+            if not e["file"].startswith(arm_name) or e["canonical"] is None:
+                continue
+            rec = recs[(e["prompt_id"], e["sample"])]
+            ids, pos, L = rec["token_ids"], e["pos"], len(e["emitted"])
+            k = deviation_index(an, ids[pos: pos + L])
+            if pos + k >= len(rec["topk_ids"]):
+                continue
+            rank = lambda i: rec["topk_ids"][i].index(ids[i]) + 1 if ids[i] in rec["topk_ids"][i][:10] else 11
+            first.append(rank(pos)); dev.append(rank(pos + k)); where["1" if k == 0 else "2" if k == 1 else "later"] += 1
+        n = len(first)
+        pct = lambda c: f"{100 * c / n:.0f}%" if n else "n/a"
+        print(f"| {label} | {n} | {band_shares(np.array(first))} | {band_shares(np.array(dev))} | {pct(where['1'])} / {pct(where['2'])} / {pct(where['later'])} |")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tokenizer", required=True)
     ap.add_argument("--revision", default="main")
-    ap.add_argument("runs", type=Path, nargs="+", help="run directories holding <arm>.parquet")
+    ap.add_argument("runs", nargs="+", help="run directories holding <arm>.parquet; with --deviation-table, label=run_dir[:arm] specs")
+    ap.add_argument("--deviation-table", action="store_true", help="table of first-token vs deviating-token ranks per cell")
+    ap.add_argument("--arm", default=None, help="default arm for --deviation-table specs")
     args = ap.parse_args()
     an = Analyzer(args.tokenizer, args.revision)
+    if args.deviation_table:
+        print_deviation_table(an, args.runs, args.arm)
+        return
     for run_dir in args.runs:
-        analyze_run(an, run_dir)
+        analyze_run(an, Path(run_dir))
 
 
 if __name__ == "__main__":
