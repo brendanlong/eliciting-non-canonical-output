@@ -6,6 +6,7 @@
     uv run python scripts/figures.py 5              # figure 1 at the recommended sampling settings
     uv run python scripts/figures.py 6              # DAPO vs AIME, same model
     uv run python scripts/figures.py 7              # correct vs incorrect rollouts
+    uv run python scripts/figures.py 8              # parsed vs unparsed rollouts
 
 Figure 3 needs the rollout parquet (with logprobs) of the OLMo-3 Think and
 RL-Zero-Math cells; figure 4 needs out/divergence/<run>/untruncated.parquet.
@@ -320,31 +321,35 @@ def fig6() -> None:
     save(fig, "fig6_dapo_vs_aime.png")
 
 
-# --- 7. correct vs incorrect rollouts ------------------------------------------------
-def fig7() -> None:
-    """Whole-rollout flag rate among correct and among incorrect rollouts, every stage, temperature 1 (buckets with <10 rollouts omitted)."""
+# --- 7 / 8. outcome buckets: correct vs incorrect, parsed vs unparsed --------------------
+def fig_buckets(key: str, buckets: list[tuple[str, str, str]], title: str, filename: str) -> None:
+    """Whole-rollout flag rate per outcome bucket for every stage, temperature 1.
+
+    ``buckets`` = (label, colour, member outcomes joined by "+"); buckets with fewer than 10
+    rollouts are annotated with their counts instead of drawn."""
     from noncanon.metrics import outcome
 
-    DATA["fig7"] = {}
+    DATA[key] = {}
     ladders = {fam: [st for st in stages if st[1]] for fam, stages in LADDERS.items()}
     widths = [len(v) for v in ladders.values()]
     fig, axes = plt.subplots(1, len(ladders), figsize=(12.5, 3.8), gridspec_kw={"width_ratios": widths}, sharey=True)
     for ax, (family, stages) in zip(axes, ladders.items()):
-        for j, (bucket, color) in enumerate((("correct", AQUA), ("incorrect", ORANGE))):
+        for j, (label, color, members) in enumerate(buckets):
+            wanted = set(members.split("+"))
             pts = []
             for i, (stage, run, _) in enumerate(stages):
-                rs = [r for r in rows(run, "untruncated") if outcome(r) == bucket]
+                rs = [r for r in rows(run, "untruncated") if outcome(r) in wanted]
                 pct, lo, hi, k, n = flag_pct(rs)
                 mean_len = float(np.mean([r["n_tokens"] for r in rs])) if rs else float("nan")
-                DATA["fig7"][f"{family} | {stage} | {bucket}"] = {"pct": pct, "lo": lo, "hi": hi, "k": k, "n": n, "mean_tokens": mean_len}
+                DATA[key][f"{family} | {stage} | {label}"] = {"pct": pct, "lo": lo, "hi": hi, "k": k, "n": n, "mean_tokens": mean_len}
                 if n >= 10:
                     pts.append((i, pct, lo, hi, n))
                 else:  # too few rollouts for a bar: say so where the bar would be, so the gap does not read as zero
-                    ax.text(i + (j - 0.5) * 0.36, 1.5, f"{bucket}\n{k}/{n}\n(n<10)", ha="center", va="bottom", fontsize=6, color=MUTED, linespacing=0.9)
+                    ax.text(i + (j - 0.5) * 0.36, 1.5, f"{label}\n{k}/{n}\n(n<10)", ha="center", va="bottom", fontsize=6, color=MUTED, linespacing=0.9)
             if not pts:
                 continue
             x = np.array([i for i, *_ in pts]) + (j - 0.5) * 0.36
-            ax.bar(x, [p[1] for p in pts], width=0.34, color=color, label=bucket, zorder=2)
+            ax.bar(x, [p[1] for p in pts], width=0.34, color=color, label=label, zorder=2)
             errbar(ax, x, [p[1] for p in pts], [p[2] for p in pts], [p[3] for p in pts])
             for xi, (_, pct, _, hi, n) in zip(x, pts):
                 ax.text(xi, hi + 1, f"{pct:.0f}\nn={n}", ha="center", va="bottom", fontsize=6.5, color=INK2, linespacing=0.9)
@@ -354,12 +359,25 @@ def fig7() -> None:
     axes[0].set_ylabel("rollouts with a non-canonical event (%)")
     axes[0].set_ylim(0, 100)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.97), ncol=2)
-    fig.suptitle("Correct vs incorrect rollouts, whole rollout (DAPO held-out, temperature 1 / top-p 1, Wilson 95%; buckets with <10 rollouts omitted)", fontsize=9.5, color=INK, y=1.09)
-    save(fig, "fig7_correct_vs_incorrect.png")
+    fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.97), ncol=len(buckets))
+    fig.suptitle(title, fontsize=9.5, color=INK, y=1.09)
+    save(fig, filename)
 
 
-FIGS = {1: fig1, 2: fig2, 3: fig3, 4: fig4, 5: lambda: fig1("recommended"), 6: fig6, 7: fig7}
+def fig7() -> None:
+    fig_buckets("fig7", [("correct", AQUA, "correct"), ("incorrect", ORANGE, "incorrect")],
+                "Correct vs incorrect rollouts, whole rollout (DAPO held-out, temperature 1 / top-p 1, Wilson 95%; buckets with <10 rollouts annotated)",
+                "fig7_correct_vs_incorrect.png")
+
+
+def fig8() -> None:
+    """Parsed = finished with an integer answer (correct or not); unparsed = finished without one; rollouts cut at the 32k cap are excluded."""
+    fig_buckets("fig8", [("parsed", BLUE, "correct+incorrect"), ("unparsed", VIOLET, "unparsed")],
+                "Parsed vs unparsed rollouts, whole rollout (DAPO held-out, temperature 1 / top-p 1, Wilson 95%; truncated rollouts excluded; buckets with <10 rollouts annotated)",
+                "fig8_parsed_vs_unparsed.png")
+
+
+FIGS = {1: fig1, 2: fig2, 3: fig3, 4: fig4, 5: lambda: fig1("recommended"), 6: fig6, 7: fig7, 8: fig8}
 
 
 def main() -> None:

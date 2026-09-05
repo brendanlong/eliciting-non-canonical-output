@@ -40,7 +40,7 @@ noncanon/
 prompts/         generated prompt files and the DAPO filter report (committed)
 scripts/         recompute every cell's metrics; run every comparison; check_results.py verifies the generated tables in RESULTS.md
                  figures.py renders figures/ from the metrics under out/ (numbers to figures/data.json): stages, RL-Zero steps,
-                 span rank, divergence, recommended settings, DAPO vs AIME, correct vs incorrect;
+                 span rank, divergence, recommended settings, DAPO vs AIME, correct vs incorrect, parsed vs unparsed;
                  random_examples.py and flag_composition.py print the uniformly sampled spans and the flagged-fraction decomposition
 figures/         the rendered figures and their data
 skypilot/        RunPod task definitions
