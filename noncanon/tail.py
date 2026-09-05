@@ -36,7 +36,8 @@ def per_million(span_ranks: np.ndarray, ranks: np.ndarray) -> str:
     return " / ".join(f"{1e6 * ((span_ranks >= lo) & (span_ranks <= hi)).sum() / max(1, ((ranks >= lo) & (ranks <= hi)).sum()):.1f}" for lo, hi in BANDS)
 
 
-def analyze_run(an: Analyzer, run_dir: Path) -> None:
+def collect(an: Analyzer, run_dir: Path) -> dict:
+    """Ranks of every sampled token and of each span's first token, with the distribution's sharpness."""
     parquet = next(p for p in (run_dir / "untruncated.parquet", run_dir / "recommended.parquet") if p.exists())
     ranks, beyond = [], {}
     all_first, other_first, second_after_space, next_piece = [], [], [], Counter()
@@ -75,14 +76,23 @@ def analyze_run(an: Analyzer, run_dir: Path) -> None:
                 next_piece[sp["emitted"][1]] += 1
             else:
                 other_first.append(rank[sp["pos"]])
-    ranks = np.concatenate(ranks)
-    all_first, other_first, second_after_space = np.array(all_first), np.array(other_first), np.array(second_after_space)
-    ent = np.concatenate(entropies)
+    return {
+        "ranks": np.concatenate(ranks), "all_first": np.array(all_first), "other_first": np.array(other_first),
+        "second_after_space": np.array(second_after_space), "next_piece": next_piece, "k": k_stored,
+        "beyond": {kk: np.concatenate(v).mean() for kk, v in sorted(beyond.items())},
+        "beyond_k_all": np.concatenate(beyond_k_all).mean(), "beyond_k_first": np.array(beyond_k_first),
+        "entropy": np.concatenate(entropies), "p_top1": np.concatenate(p_top1),
+    }
+
+
+def analyze_run(an: Analyzer, run_dir: Path) -> None:
+    d = collect(an, run_dir)
+    ranks, all_first, other_first, second_after_space = d["ranks"], d["all_first"], d["other_first"], d["second_after_space"]
+    ent, k_stored, next_piece, beyond_k_first, p1 = d["entropy"], d["k"], d["next_piece"], d["beyond_k_first"], d["p_top1"]
     print(f"\n{run_dir}: {len(ranks):,} positions, {len(all_first)} spans (byte fragments excluded), k = {k_stored}")
-    print("  mean mass beyond top-k:      " + "  ".join(f"k={kk}: {np.concatenate(v).mean():.4f}" for kk, v in sorted(beyond.items())))
-    print(f"  mass beyond top-{k_stored}: all positions {np.concatenate(beyond_k_all).mean():.4f}, at span-first positions {np.mean(beyond_k_first) if len(beyond_k_first) else float('nan'):.4f}")
+    print("  mean mass beyond top-k:      " + "  ".join(f"k={kk}: {v:.4f}" for kk, v in d["beyond"].items()))
+    print(f"  mass beyond top-{k_stored}: all positions {d['beyond_k_all']:.4f}, at span-first positions {np.mean(beyond_k_first) if len(beyond_k_first) else float('nan'):.4f}")
     print(f"  entropy (top-{k_stored}, nats): mean {ent.mean():.4f}, p90 {np.percentile(ent, 90):.4f}, frac > 1: {100 * (ent > 1).mean():.2f}%")
-    p1 = np.concatenate(p_top1)
     print(f"  p(top-1): mean {p1.mean():.4f}, frac < 0.5: {100 * (p1 < 0.5).mean():.2f}%, frac < 0.9: {100 * (p1 < 0.9).mean():.2f}%")
     print(f"  all sampled tokens at rank 1 / 2-3 / 4-10 / >10:            " + band_shares(ranks))
     print(f"  all spans, first-token rank at 1 / 2-3 / 4-10 / >10:        " + band_shares(all_first))
@@ -106,33 +116,42 @@ def deviation_index(an: Analyzer, span_ids: list[int]) -> int:
     return len(span_ids) - 1
 
 
-def print_deviation_table(an: Analyzer, specs: list[str], default_arm: str | None) -> None:
-    """Per cell: rank bands of the span's first token and of its deviating token, and where the deviation sits."""
+def deviation_ranks(an: Analyzer, run: Path, arm: str | None) -> tuple[np.ndarray, np.ndarray, Counter]:
+    """Per span of one cell: rank of the first token, rank of the deviating token (11 = beyond the stored top-10),
+    and a count of where the deviation sits ("1", "2", "later")."""
     import json
 
-    from noncanon.compare import load_rows, parse_spec
+    from noncanon.compare import load_rows
+
+    arm_name = load_rows(run, arm)[0]["file"].removesuffix(".parquet")
+    recs = {(r["prompt_id"], r["sample"]): r for r in iter_records(run / f"{arm_name}.parquet")}
+    first, dev, where = [], [], Counter()
+    for line in (run / "metrics" / "examples.jsonl").open():
+        e = json.loads(line)
+        if not e["file"].startswith(arm_name) or e["canonical"] is None:
+            continue
+        rec = recs[(e["prompt_id"], e["sample"])]
+        ids, pos, L = rec["token_ids"], e["pos"], len(e["emitted"])
+        k = deviation_index(an, ids[pos: pos + L])
+        if pos + k >= len(rec["topk_ids"]):
+            continue
+        rank = lambda i: rec["topk_ids"][i].index(ids[i]) + 1 if ids[i] in rec["topk_ids"][i][:10] else 11
+        first.append(rank(pos)); dev.append(rank(pos + k)); where["1" if k == 0 else "2" if k == 1 else "later"] += 1
+    return np.array(first), np.array(dev), where
+
+
+def print_deviation_table(an: Analyzer, specs: list[str], default_arm: str | None) -> None:
+    """Per cell: rank bands of the span's first token and of its deviating token, and where the deviation sits."""
+    from noncanon.compare import parse_spec
 
     print("| cell | spans | first-token rank: 1 / 2–3 / 4–10 / beyond top-10 | deviating-token rank: 1 / 2–3 / 4–10 / beyond top-10 | deviation at token 1 / 2 / later |")
     print("|---|--:|---|---|---|")
     for spec in specs:
         label, run, arm = parse_spec(spec, default_arm)
-        arm_name = load_rows(run, arm)[0]["file"].removesuffix(".parquet")
-        recs = {(r["prompt_id"], r["sample"]): r for r in iter_records(run / f"{arm_name}.parquet")}
-        first, dev, where = [], [], Counter()
-        for line in (run / "metrics" / "examples.jsonl").open():
-            e = json.loads(line)
-            if not e["file"].startswith(arm_name) or e["canonical"] is None:
-                continue
-            rec = recs[(e["prompt_id"], e["sample"])]
-            ids, pos, L = rec["token_ids"], e["pos"], len(e["emitted"])
-            k = deviation_index(an, ids[pos: pos + L])
-            if pos + k >= len(rec["topk_ids"]):
-                continue
-            rank = lambda i: rec["topk_ids"][i].index(ids[i]) + 1 if ids[i] in rec["topk_ids"][i][:10] else 11
-            first.append(rank(pos)); dev.append(rank(pos + k)); where["1" if k == 0 else "2" if k == 1 else "later"] += 1
+        first, dev, where = deviation_ranks(an, run, arm)
         n = len(first)
         pct = lambda c: f"{100 * c / n:.0f}%" if n else "n/a"
-        print(f"| {label} | {n} | {band_shares(np.array(first))} | {band_shares(np.array(dev))} | {pct(where['1'])} / {pct(where['2'])} / {pct(where['later'])} |")
+        print(f"| {label} | {n} | {band_shares(first)} | {band_shares(dev)} | {pct(where['1'])} / {pct(where['2'])} / {pct(where['later'])} |")
 
 
 def print_deviation_examples(an: Analyzer, specs: list[str], default_arm: str | None, n: int, seed: int) -> None:

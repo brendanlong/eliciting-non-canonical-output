@@ -20,4 +20,7 @@ gpu = ["vllm==0.11.*"]
 package = false
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "matplotlib>=3.11.1",
+    "pytest>=8",
+]
