@@ -249,7 +249,7 @@ def fig4() -> None:
         top = axes[col]
         series = [(stage, run, STAGE_COLOR.get(stage, ORDINAL[1 + i]), None) for i, (stage, run, _) in enumerate(stages)]
         if family.endswith("RL-Zero-Math"):
-            series.append((f"step 2000, excluding the {HABIT.replace(' ', '·').replace('$', chr(92) + '$')} span", "rlzero-math", AQUA, HABIT))
+            series.append((f"step 2000 without {HABIT.replace(' ', '·').replace('$', chr(92) + '$')}", "rlzero-math", AQUA, HABIT))
         for stage, run, color, exclude in series:
             c = load_table(Path("out/divergence") / run, "untruncated")
             m = c["kind"] == "span"
@@ -267,9 +267,9 @@ def fig4() -> None:
             DATA["fig4"][f"{family} | {stage}"] = {"spans": n_spans, "top1_differs_pct_by_bin": dict(zip(bin_labels, differs)), "median_kl_by_bin": dict(zip(bin_labels, med_kl))}
         top.set_title(family)
         top.set_yscale("log")
-        top.set_ylim(0.2, 60)
+        top.set_ylim(0.2, 120)
         top.set_yticks([0.3, 1, 3, 10, 30], ["0.3", "1", "3", "10", "30"])
-        top.legend(loc="lower left")
+        top.legend(loc="upper right", fontsize=7.5)
         top.set_xticks(range(len(DISTANCE_BINS)), bin_labels)
         top.set_xlabel("tokens after the span")
     axes[0].set_ylabel("next-token argmax differs,\nemitted vs canonical prefix (%)")

@@ -672,7 +672,7 @@
     "257+": 8.01200803834945e-06
    }
   },
-  "OLMo-3-7B RL-Zero-Math | step 2000, excluding the \u00b7\\$(\\$ span": {
+  "OLMo-3-7B RL-Zero-Math | step 2000 without \u00b7\\$(\\$": {
    "spans": 173,
    "top1_differs_pct_by_bin": {
     "0": 13.8728323699422,
