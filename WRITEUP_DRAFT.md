@@ -4,9 +4,9 @@
 
 ## Executive summary
 
-A language model can emit a token sequence whose decoded text re-tokenizes differently: `light` + `house` where the tokenizer would produce `l` + `ighthouse`. These non-canonical tokens are invisible in a transcript stored as text, so a probe or logit lens run on the re-tokenized text is looking at positions the model never computed. Non-canonical inputs are also a known jailbreak vector, so a model that reasons in them is reasoning where a text-based monitor cannot see. I wanted to know how often modern models do this on an ordinary task, which post-training stage moves the rate, and how far the model's computation diverges after it happens.
+A language model can emit a token sequence whose decoded text re-tokenizes differently: `light` + `house` where the tokenizer would produce `l` + `ighthouse`. These non-canonical tokens are invisible in a transcript stored as text, so a probe or logit lens run on the re-tokenized text is looking at positions the model never computed, and non-canonical inputs are a known jailbreak vector. I wanted to know how often modern models do this on an ordinary task, which post-training stage moves the rate, and how far the computation diverges afterwards.
 
-I sampled 500 held-out DAPO math problems (and AIME 2024/2025 for three checkpoints) from every released post-training checkpoint of OLMo-3-7B Think and Instruct (SFT, DPO, RL), from four RL steps of OLMo-3-7B-RL-Zero-Math (RL directly on the base model), and from the Tulu-3-8B ladder as a second tokenizer: 14 checkpoints, 69 million generated tokens, with emitted token ids kept and checked by `encode(decode(ids)) != ids`. The primary statistic is the fraction of rollouts with at least one non-canonical event (a span or an unfinished multi-byte character).
+I sampled 500 held-out DAPO math problems (and AIME 2024/2025 for three checkpoints) from every released post-training checkpoint of OLMo-3-7B Think and Instruct (SFT, DPO, RL), from four RL steps of OLMo-3-7B-RL-Zero-Math (RL directly on the base model), and from the Tulu-3-8B ladder as a second tokenizer: 14 checkpoints, 69 million generated tokens, emitted ids kept and checked by `encode(decode(ids)) != ids`. The statistic is the fraction of rollouts with at least one non-canonical event (a span or an unfinished multi-byte character).
 
 **The answer to the title question.** For a shipped model it is a small problem: the OLMo-3 Think release has an event in 2% of its roughly 9,000-token math rollouts at its recommended sampling settings, and 10% at temperature 1. For intermediate checkpoints it is not small: the DPO checkpoint before it has an event in 15% of rollouts at recommended settings and 55% at temperature 1. When an event happens the damage is local. Teacher-forcing the same text as the emitted ids versus their canonical re-tokenization changes the next-token argmax at the span for 12–36% of spans, depending on the checkpoint, and the two distributions agree again within about 16 tokens (Figure 6).
 
@@ -14,9 +14,7 @@ I sampled 500 held-out DAPO math problems (and AIME 2024/2025 for three checkpoi
 
 **RL from the base model goes the other way, mostly through one habit.** RL-Zero-Math rises from 15% of rollouts at step 300 to 58% at step 2000. Three quarters of that is a single learned span at the start of the rollout (` $`+`($` where the tokenizer has ` $($`, in 210 of 500 rollouts). Excluding it, the rate is flat at 12–15% through step 1400 and doubles to 27% at step 2000.
 
-**Tulu-3 does not move** (3–5% at every stage, Llama tokenizer), so the DPO spike may be specific to the OLMo-3 tokenizer or recipe.
-
-**This is not tail sampling.** In the three cells I ran the logprob analysis on, three quarters of spans begin with the model's argmax token. The recommended settings lower the rate 3.6–8.5× but do not remove it.
+**Tulu-3 does not move** (3–5% at every stage, Llama tokenizer), so the DPO spike may be specific to the OLMo-3 tokenizer or recipe. **This is not tail sampling:** in the three cells with logprob analysis, three quarters of spans begin with the model's argmax token, and the recommended settings lower the rate 3.6–8.5× without removing it.
 
 ![Figure 1](figures/fig1_stages.png)
 
