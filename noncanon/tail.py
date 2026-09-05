@@ -135,17 +135,57 @@ def print_deviation_table(an: Analyzer, specs: list[str], default_arm: str | Non
         print(f"| {label} | {n} | {band_shares(np.array(first))} | {band_shares(np.array(dev))} | {pct(where['1'])} / {pct(where['2'])} / {pct(where['later'])} |")
 
 
+def print_deviation_examples(an: Analyzer, specs: list[str], default_arm: str | None, n: int, seed: int) -> None:
+    """Random spans per cell with the token that breaks canonicity marked, its rank and probability
+    at that position (stored top-10), and the model's top choice there."""
+    import json
+    import random
+
+    from noncanon.compare import load_rows, parse_spec
+
+    show = lambda t: "`" + t.replace("|", "\\|").replace("\n", "⏎").replace("`", "'") + "`"
+    print("| cell | context (…before the span) | span: emitted (breaking token in **bold**) → canonical | breaking token: rank, p | model's top choice there, p |")
+    print("|---|---|---|---|---|")
+    for spec in specs:
+        label, run, arm = parse_spec(spec, default_arm)
+        arm_name = load_rows(run, arm)[0]["file"].removesuffix(".parquet")
+        recs = {(r["prompt_id"], r["sample"]): r for r in iter_records(run / f"{arm_name}.parquet")}
+        spans = [json.loads(l) for l in (run / "metrics" / "examples.jsonl").open()]
+        spans = [e for e in spans if e["file"].startswith(arm_name) and e["canonical"] is not None]
+        rng = random.Random(seed)
+        rng.shuffle(spans)
+        for e in spans[:n]:
+            rec = recs[(e["prompt_id"], e["sample"])]
+            ids, pos, L = rec["token_ids"], e["pos"], len(e["emitted"])
+            k = deviation_index(an, ids[pos: pos + L])
+            i = pos + k
+            if i >= len(rec["topk_ids"]):
+                continue
+            tk, lp = rec["topk_ids"][i], rec["topk_logprobs"][i]
+            rank = tk.index(ids[i]) + 1 if ids[i] in tk[:10] else None
+            p_tok = np.exp(lp[tk.index(ids[i])]) if ids[i] in tk else float("nan")
+            best = int(np.argmax(lp[:10]))
+            pieces = " ".join(("**" + show(x) + "**") if j == k else show(x) for j, x in enumerate(e["emitted"]))
+            ctx = an.tok.decode(ids[max(0, pos - 20): pos])[-50:]
+            print(f"| {label} | …{show(ctx)} | {pieces} → {' '.join(show(x) for x in e['canonical'])} | {rank if rank else '>10'}, {p_tok:.3f} | {show(an.piece(tk[best]))} {np.exp(lp[best]):.2f} |")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tokenizer", required=True)
     ap.add_argument("--revision", default="main")
     ap.add_argument("runs", nargs="+", help="run directories holding <arm>.parquet; with --deviation-table, label=run_dir[:arm] specs")
     ap.add_argument("--deviation-table", action="store_true", help="table of first-token vs deviating-token ranks per cell")
-    ap.add_argument("--arm", default=None, help="default arm for --deviation-table specs")
+    ap.add_argument("--deviation-examples", type=int, default=0, metavar="N", help="N random spans per cell with the breaking token, its rank and probability")
+    ap.add_argument("--arm", default=None, help="default arm for the table/examples specs")
+    ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     an = Analyzer(args.tokenizer, args.revision)
     if args.deviation_table:
         print_deviation_table(an, args.runs, args.arm)
+        return
+    if args.deviation_examples:
+        print_deviation_examples(an, args.runs, args.arm, args.deviation_examples, args.seed)
         return
     for run_dir in args.runs:
         analyze_run(an, Path(run_dir))
