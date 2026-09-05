@@ -1225,13 +1225,18 @@ What the length windows show, beyond the earlier analysis:
   windows cannot say whether that gap is anything but length.
 - **Tulu-SFT vs DPO or RLVR is distinguishable only within the first
   1,024 tokens** (p = 0.004, 0.001), among the 106 SFT rollouts that
-  reached that length, which are the word-salad ones.
+  reached that length (a fifth of its rollouts, its longest attempts; 6
+  of the 106 are unparsed, and with those removed the window still reads
+  11/100 vs 6/167 for DPO, Fisher p = 0.021). The overall SFT-vs-DPO
+  comparison is p = 0.11, and this is one nominal result among the 37
+  pairs × 4 windows of the table, so it is reported, not relied on.
 
 *Notes from Claude:* the windowed flag is a fixed-horizon "has the first
 event happened by token L" and is compared only among rollouts that
 reached L, so it conditions on length rather than adjusting for it; a
-cell whose long rollouts are its degenerate ones (Tulu-SFT) will look
-worse in the long windows for that reason, and a cell with few long
+cell whose long rollouts are its weakest attempts (Tulu-SFT: its
+rollouts past 1,024 tokens are 4% correct) will look worse in the long
+windows for that reason, and a cell with few long
 rollouts (Instruct-SFT: 31 past 1,024 tokens, none past 4,096) gives the
 long windows no power, so a null there is not evidence of a length
 effect. The per-token permutation and the Fisher test disagree in sign
