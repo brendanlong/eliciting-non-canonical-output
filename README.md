@@ -14,7 +14,9 @@ the model's later computation.
 - [RESULTS.md](RESULTS.md): one entry per run, in order, with the exact
   command and the numbers.
 - Artifacts (every rollout with its emitted token IDs and logprobs) live on
-  the HuggingFace dataset `brendanlong/noncanonical-post-training`.
+  the HuggingFace dataset
+  [brendanlong/noncanonical-post-training](https://huggingface.co/datasets/brendanlong/noncanonical-post-training);
+  see [Data](#data) below.
 
 ## Layout
 
@@ -43,6 +45,33 @@ figures/         the rendered figures and their data
 skypilot/        RunPod task definitions
 ```
 
+## Data
+
+Everything measured is on the HuggingFace dataset
+[brendanlong/noncanonical-post-training](https://huggingface.co/datasets/brendanlong/noncanonical-post-training),
+one folder per run:
+
+| folder | cell |
+|---|---|
+| [think-sft](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/think-sft), [think-dpo](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/think-dpo), [think-main](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/think-main) | OLMo-3-7B Think SFT / DPO / RL final, DAPO 500 at temperature 1 (think-dpo and think-main also hold AIME 2024/2025 × 8) |
+| [think-dpo-recommended](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/think-dpo-recommended), [think-main-recommended](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/think-main-recommended) | the same two checkpoints at their recommended settings |
+| [rlzero-math](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/rlzero-math), [rlzero-math-step300](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/rlzero-math-step300), [-step600](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/rlzero-math-step600), [-step1000](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/rlzero-math-step1000), [-step1400](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/rlzero-math-step1400), [-step1800](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/rlzero-math-step1800) | OLMo-3-7B RL-Zero-Math at step 2,000 (DAPO + AIME) and five earlier checkpoints (DAPO) |
+| [instruct-sft](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/instruct-sft), [instruct-dpo](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/instruct-dpo), [instruct-main](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/instruct-main) | OLMo-3-7B Instruct SFT / DPO / RL final, both sampling arms |
+| [tulu3-sft](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/tulu3-sft), [tulu3-dpo](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/tulu3-dpo), [tulu3-rlvr](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/tulu3-rlvr), [tulu31-rlvr](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/tulu31-rlvr) | Tulu-3-8B SFT / DPO / RLVR and Tulu-3.1-8B, both sampling arms |
+| [divergence](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/divergence) | per-run outputs of the divergence, contagion and examples measurements |
+| [pilot](https://huggingface.co/datasets/brendanlong/noncanonical-post-training/tree/main/pilot) | the 50-prompt pilot (earlier metrics code; superseded) |
+
+Each run folder holds `<prompt set>/<arm>.parquet` (one row per rollout:
+prompt and emitted token IDs, text, finish reason, sampled and top-10
+logprobs), `<arm>.meta.json` (model, revision, sampling settings,
+throughput) and `metrics/` (`summary.json`, `analysis.jsonl` per rollout,
+`examples.jsonl` per span, `transcripts.jsonl`). To get everything the
+analysis commands in RESULTS.md need:
+
+```python
+from huggingface_hub import snapshot_download
+snapshot_download("brendanlong/noncanonical-post-training", repo_type="dataset", local_dir="out")
+```
 ## Licenses
 
 The code in this repository (everything outside `prompts/`) is released
