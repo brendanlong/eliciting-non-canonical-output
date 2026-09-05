@@ -247,10 +247,16 @@ def fig4() -> None:
     bin_labels = [f"{lo}" if lo == hi else (f"{lo}–{hi}" if hi < 10**9 else f"{lo}+") for lo, hi in DISTANCE_BINS]
     for col, (family, stages) in enumerate(OLMO.items()):
         top = axes[col]
-        for i, (stage, run, _) in enumerate(stages):
+        series = [(stage, run, STAGE_COLOR.get(stage, ORDINAL[1 + i]), None) for i, (stage, run, _) in enumerate(stages)]
+        if family.endswith("RL-Zero-Math"):
+            series.append((f"step 2000, excluding the {HABIT.replace(' ', '·').replace('$', chr(92) + '$')} span", "rlzero-math", AQUA, HABIT))
+        for stage, run, color, exclude in series:
             c = load_table(Path("out/divergence") / run, "untruncated")
             m = c["kind"] == "span"
-            color = STAGE_COLOR.get(stage, ORDINAL[1 + i])
+            if exclude is not None:
+                events = [json.loads(l) for l in (Path("out") / run / D / "metrics" / "examples.jsonl").open()]
+                habit = {(e["prompt_id"], e["sample"], e["pos"]) for e in events if "".join(e["emitted"]) == exclude}
+                m = m & ~np.array([k in habit for k in zip(c["prompt_id"], c["sample"], c["span_pos"])])
             differs, med_kl = [], []
             for lo, hi in DISTANCE_BINS:
                 y = m & (c["distance_tokens"] >= lo) & (c["distance_tokens"] <= hi)
