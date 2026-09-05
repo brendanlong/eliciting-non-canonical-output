@@ -30,6 +30,7 @@ noncanon/
                  cell tables, pairwise table, top spans, flags with one span removed
   clustering.py  do events cluster within rollouts (Poisson excess, hazard, gap shuffle, same-text repeats)
   divergence.py  teacher-forced divergence after a span (emitted ids vs canonical re-tokenization); contagion test
+  textstats.py   CJK content and bare-space spans per cell (the DPO question)
   tail.py        where in the next-token distribution non-canonical spans start
   upload.py      push a run directory to the HF dataset
   gpu_check.py   fail fast if CUDA is not usable on the host
