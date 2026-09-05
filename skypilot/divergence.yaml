@@ -40,7 +40,12 @@ run: |
     [ -n "$MODEL" ] && [ -n "$REVISION" ] && [ -n "$RUN_NAME" ] || { echo ">>> bad JOBS entry '$job'"; exit 1; }
     echo ">>> $MODEL @ $REVISION -> $RUN_NAME"
     uv run python -m noncanon.divergence fetch "$RUN_NAME" --prompt-set "$PROMPT_SET" --repo "$HF_DATASET" || exit 1
-    if [ "$MODE" = contagion ]; then
+    if [ "$MODE" = examples ]; then
+      uv run python -m noncanon.divergence fetch "$RUN_NAME" --prompt-set "$PROMPT_SET" --repo "$HF_DATASET" >/dev/null || exit 1
+      uv run python -c "from huggingface_hub import snapshot_download as d; d('$HF_DATASET', repo_type='dataset', local_dir='out', allow_patterns=['divergence/$RUN_NAME/*'])" || exit 1
+      uv run python -m noncanon.divergence examples "out/$RUN_NAME/$PROMPT_SET" --model "$MODEL" --revision "$REVISION" --arm "$ARM" \
+          -n "$MAX_SPANS" --out-dir "out/divergence/$RUN_NAME" || exit 1
+    elif [ "$MODE" = contagion ]; then
       uv run python -m noncanon.divergence contagion "out/$RUN_NAME/$PROMPT_SET" --model "$MODEL" --revision "$REVISION" --arm "$ARM" \
           --max-pairs "$MAX_SPANS" --out-dir "out/divergence/$RUN_NAME" || exit 1
     else

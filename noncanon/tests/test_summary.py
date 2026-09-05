@@ -95,3 +95,18 @@ def test_top_spans_table_counts_spans_and_rollouts(tmp_path, capsys):
     row = capsys.readouterr().out.splitlines()[-1]
     assert row.startswith("| Z | 3 | 2 | ") and "`a`+`b` → `ab` (3, 2)" in row  # the fragment (canonical None) is not a span
     assert compare.pieces_md(["a|b", "\n"]) == "`a\\|b`+`⏎`"  # pipes escaped for GFM table cells
+
+
+def test_textstats_counts_cjk_and_whitespace_first_spans(tmp_path):
+    from noncanon import textstats
+
+    d = write_cell(tmp_path, "z", "untruncated", [1, 1, 0], [True] * 3)
+    with (d / "metrics" / "transcripts.jsonl").open("w") as f:
+        for pid, text in (("r0", "hello 所以 world"), ("r1", "plain"), ("r2", "")):
+            f.write(json.dumps({"file": "untruncated.parquet", "prompt_id": pid, "sample": 0, "transcript": text}) + "\n")
+    with (d / "metrics" / "examples.jsonl").open("w") as f:
+        for pid, em, ca, ctx in (("r0", [" ", "."], [" ."], "x"), ("r1", [" ", "\ufffd"], [" ?"], "y"), ("r1", ["a", "b"], ["ab"], "z"), ("r0", ["\ufffd"], None, "so ")):
+            f.write(json.dumps({"file": "untruncated.parquet", "prompt_id": pid, "sample": 0, "pos": 1, "emitted": em, "canonical": ca, "context": ctx}) + "\n")
+    s = textstats.stats(d, "untruncated")
+    assert s["with_cjk"] == 1 and abs(s["cjk_per_100k"] - 1e5 * 2 / len("hello 所以 worldplain")) < 1e-6
+    assert s["ws_first"] == 2 and s["second"]["byte fragment"] == 1 and s["second"]["other"] == 1 and s["frag_after_space"] == 1

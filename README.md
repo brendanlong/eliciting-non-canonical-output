@@ -4,7 +4,10 @@ Does on-policy RL raise a model's rate of *non-canonical* tokens (emitted
 token sequences whose decoded text re-encodes differently, so they are
 invisible in any transcript stored as text) relative to the SFT/DPO
 checkpoint it started from? Measured on the OLMo-3-7B Think and Instruct
-ladders, whose stages share one base, one tokenizer and one codebase.
+ladders (stages sharing one base, one tokenizer and one codebase), six
+checkpoints of OLMo-3-7B-RL-Zero-Math, and the Tulu-3-8B ladder, with
+follow-ups on event clustering and on what a non-canonical span does to
+the model's later computation.
 
 - [EXPERIMENT_PLAN.md](EXPERIMENT_PLAN.md): design, models and why, prompt
   sets, metrics, run order, and pre-registered predictions.
@@ -22,8 +25,12 @@ noncanon/
   records.py     the Parquet record schema shared by generation and analysis
   metrics.py     round-trip metric (exact minimal diff), think/answer split, token classes,
                  integer verifier, length/outcome/position slices, top-k entropy
-  summary.py     the three summary tables at the top of RESULTS.md (stages; DAPO vs AIME; sampling settings)
-  compare.py     cell-vs-cell tests: rollouts flagged (Fisher exact, fixed-window), per-token rate (secondary)
+  summary.py     the summary tables of RESULTS.md (stage ladders; DAPO vs AIME; sampling settings)
+  compare.py     cell-vs-cell tests: rollouts flagged (Fisher exact, fixed-window), per-token rate (secondary);
+                 cell tables, pairwise table, top spans, flags with one span removed
+  clustering.py  do events cluster within rollouts (Poisson excess, hazard, gap shuffle, same-text repeats)
+  divergence.py  teacher-forced divergence after a span (emitted ids vs canonical re-tokenization); contagion test
+  textstats.py   CJK content and bare-space spans per cell (the DPO question)
   tail.py        where in the next-token distribution non-canonical spans start
   upload.py      push a run directory to the HF dataset
   gpu_check.py   fail fast if CUDA is not usable on the host

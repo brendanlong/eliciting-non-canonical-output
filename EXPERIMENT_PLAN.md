@@ -51,6 +51,7 @@ Secondary questions, on the same rollouts:
   so sampling settings and dtype must be pinned and reported.
 - Sequence-level rates grow with generation length and cannot be
   compared across lengths; per-token rate is the comparable quantity.
+  (Superseded 2026-09-04: see "Primary metric changed to rollouts".)
 
 ## Models
 
@@ -88,7 +89,9 @@ as `1+3` or `2+2`, so digits can be non-canonical in this family.
 
 - `Olmo-3-7B-RL-Zero-{Math,Code,IF,General}`: RL applied directly to the
   base with no SFT. There is no matched pre-RL checkpoint that attempts
-  the task, so these are a cross-model comparison at best. Deferred.
+  the task, so these are a cross-model comparison at best. Deferred
+  (later run: RL-Zero-Math became a central cell, with six of its step
+  checkpoints measured; see RESULTS.md).
 - `Olmo-3-32B-Think` and `Olmo-3-32B-Think-SFT`: scale replication.
 
 ### Extension candidates (other families)
@@ -171,7 +174,8 @@ truncated rollouts are reported as their own category.
   satisfactory. The best comparison is the length-matched non-canonical
   rate on the same prompt across checkpoints, which depends on how well
   rollouts can be length-matched. All of the following are recorded and
-  probably all reported; the per-token rate is the best single number:
+  probably all reported; the per-token rate is the best single number
+  (superseded 2026-09-04: see "Primary metric changed to rollouts"):
   - per-token non-canonical rate: canonical tokens inside non-canonical
     spans divided by canonical tokens, from a minimal diff between the
     emitted sequence and its canonical re-encoding, so that numerator and
@@ -224,7 +228,8 @@ truncated rollouts are reported as their own category.
 2. **Think DPO vs Think RL final** on the full math prompt set. The
    headline comparison.
 3. **Think SFT final.**
-4. **Instruct SFT, DPO, RL final** on chat prompts.
+4. **Instruct SFT, DPO, RL final** on chat prompts (run on DAPO instead;
+   the chat prompt set was not built).
 5. Think RL midpoints (roughly steps 350, 700, 1050) for a curve; Think
    on chat prompts; then the RL-Zero models and extension families as
    time allows.
@@ -553,9 +558,12 @@ metric in RESULTS.md, with the same pairs and no new ones.
 
 ## Artifacts and reproducibility
 
-- Every generation is stored with its emitted token IDs, prompt, sampling
-  settings, checkpoint revision, finish reason, verifier result, judge
-  verdict, and heuristic flags, in JSONL on a HuggingFace dataset.
+- Every generation is stored with its emitted token IDs, prompt, finish
+  reason and top-k logprobs in Parquet on a HuggingFace dataset, with the
+  sampling settings and checkpoint revision in the accompanying
+  `<arm>.meta.json`; the verifier result and outcome buckets are in the
+  metrics files. The compliance judge described under Measurement was not
+  run in v1; the parsed-only outcome buckets stand in for it.
 - Every script that generates or processes an artifact lives in this
   repo and is runnable from a clean checkout; rates are recomputed from
   the stored IDs rather than trusted from stored flags.
