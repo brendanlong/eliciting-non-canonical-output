@@ -119,13 +119,28 @@ def zero_steps() -> list[tuple[int, str]]:
     return sorted(steps)
 
 
+HABIT = " $($"  # the span RL-Zero-Math learns at the start of nearly every rollout
+
+
+def flag_pct_excluding(run: str, text: str) -> tuple[float, float, float, int, int]:
+    """Flagged fraction counting only spans whose emitted text is not ``text`` (byte fragments still count)."""
+    rs = rows(run, "untruncated")
+    events = [json.loads(l) for l in (Path("out") / run / D / "metrics" / "examples.jsonl").open()]
+    keep = {(e["prompt_id"], e["sample"]) for e in events if e["file"].startswith("untruncated") and "".join(e["emitted"]) != text}
+    k, n = sum((r["prompt_id"], r["sample"]) in keep for r in rs), len(rs)
+    lo, hi = wilson(k, n)
+    return 100 * k / n, 100 * lo, 100 * hi, k, n
+
+
 def fig2() -> None:
-    fig, ax = plt.subplots(figsize=(5.2, 3.4))
+    fig, ax = plt.subplots(figsize=(5.6, 3.6))
     DATA["fig2"] = {}
-    for L, color, label, marker in [(None, BLUE, "whole rollout", "o"), (1024, ORANGE, "within the first 1,024 tokens", "s")]:
+    habit_label = HABIT.replace(" ", "·").replace("$", r"\$")  # matplotlib reads bare $ as mathtext
+    series = [(None, BLUE, "whole rollout", "o"), (1024, ORANGE, "within the first 1,024 tokens", "s"), ("habit", AQUA, f"whole rollout, excluding the {habit_label} span", "^")]
+    for L, color, label, marker in series:
         xs, ps, los, his = [], [], [], []
         for step, run in zero_steps():
-            p, lo, hi, k, n = flag_pct(rows(run, "untruncated"), L)
+            p, lo, hi, k, n = flag_pct_excluding(run, HABIT) if L == "habit" else flag_pct(rows(run, "untruncated"), L)
             xs.append(step); ps.append(p); los.append(lo); his.append(hi)
             DATA["fig2"][f"step {step} | {'all' if L is None else L}"] = {"pct": p, "lo": lo, "hi": hi, "k": k, "n": n}
         ax.plot(xs, ps, color=color, lw=2, marker=marker, ms=7, mec=SURFACE, mew=1.5, label=label, zorder=3)
