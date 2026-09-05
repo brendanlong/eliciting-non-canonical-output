@@ -42,7 +42,7 @@ scripts/         recompute every cell's metrics; run every comparison; check_res
                  figures.py renders figures/ from the metrics under out/ (numbers to figures/data.json): stages, RL-Zero steps,
                  span rank, divergence, recommended settings, DAPO vs AIME, correct vs incorrect, parsed vs unparsed;
                  random_examples.py and flag_composition.py print the uniformly sampled spans and the flagged-fraction decomposition
-figures/         the rendered figures and their data
+figures/         the rendered figures, their data (data.json), and two Markdown tables (random examples, flag composition)
 skypilot/        RunPod task definitions
 ```
 
