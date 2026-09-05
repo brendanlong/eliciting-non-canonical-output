@@ -278,6 +278,24 @@ def print_top_spans(specs: list[str], arm: str | None, n: int, outcome_filter: s
         print(f"| {label} | {sum(counts.values())} | {len(by_rollout)} | {top} |")
 
 
+def print_buckets(specs: list[str], arm: str | None) -> None:
+    """Per cell: flagged fraction in each outcome bucket, with Fisher exact p for correct vs incorrect and parsed vs unparsed."""
+    from noncanon.metrics import outcome
+
+    print("| cell | correct: flagged / n | incorrect: flagged / n | p (correct vs incorrect) | parsed: flagged / n | unparsed: flagged / n | p (parsed vs unparsed) | truncated: flagged / n |")
+    print("|---|--:|--:|--:|--:|--:|--:|--:|")
+    for spec in specs:
+        label, run, cell_arm = parse_spec(spec, arm)
+        rows = load_rows(run, cell_arm)
+        by = {b: [r for r in rows if outcome(r) == b] for b in ("correct", "incorrect", "unparsed", "truncated")}
+        by["parsed"] = by["correct"] + by["incorrect"]
+        cell = lambda b: (lambda k, n: f"{k}/{n} = {100 * k / n:.1f}%" if n else "—")(*flags(by[b]))
+        def p(a, b):
+            (k1, n1), (k2, n2) = flags(by[a]), flags(by[b])
+            return fmt_p(fisher_exact(k1, n1, k2, n2)) + (" †" if min(n1, n2) < MIN_ELIGIBLE else "") if n1 and n2 else "—"
+        print(f"| {label} | {cell('correct')} | {cell('incorrect')} | {p('correct', 'incorrect')} | {cell('parsed')} | {cell('unparsed')} | {p('parsed', 'unparsed')} | {cell('truncated')} |")
+
+
 # --- CLI ----------------------------------------------------------------------------
 
 
@@ -290,6 +308,7 @@ def main() -> None:
     ap.add_argument("--pairs", action="store_true", help="print the pairwise-test table for the pair specs given")
     ap.add_argument("--top-spans", type=int, default=0, metavar="N", help="print the N most common spans of every run given")
     ap.add_argument("--without-span", default=None, metavar="TEXT", help="with --table: drop every span whose emitted text equals TEXT before computing the flags")
+    ap.add_argument("--buckets", action="store_true", help="print flagged fractions per outcome bucket with Fisher tests, for every run given")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if args.table:
@@ -300,6 +319,9 @@ def main() -> None:
         return
     if args.top_spans:
         print_top_spans(args.runs, args.arm, args.top_spans, args.outcome)
+        return
+    if args.buckets:
+        print_buckets(args.runs, args.arm)
         return
     assert len(args.runs) == 2, "pass exactly two run directories (or --table / --pairs)"
     a, b = map(Path, args.runs)
