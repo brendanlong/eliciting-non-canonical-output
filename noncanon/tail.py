@@ -36,7 +36,8 @@ def per_million(span_ranks: np.ndarray, ranks: np.ndarray) -> str:
     return " / ".join(f"{1e6 * ((span_ranks >= lo) & (span_ranks <= hi)).sum() / max(1, ((ranks >= lo) & (ranks <= hi)).sum()):.1f}" for lo, hi in BANDS)
 
 
-def analyze_run(an: Analyzer, run_dir: Path) -> None:
+def collect(an: Analyzer, run_dir: Path) -> dict:
+    """Ranks of every sampled token and of each span's first token, with the distribution's sharpness."""
     parquet = next(p for p in (run_dir / "untruncated.parquet", run_dir / "recommended.parquet") if p.exists())
     ranks, beyond = [], {}
     all_first, other_first, second_after_space, next_piece = [], [], [], Counter()
@@ -75,14 +76,23 @@ def analyze_run(an: Analyzer, run_dir: Path) -> None:
                 next_piece[sp["emitted"][1]] += 1
             else:
                 other_first.append(rank[sp["pos"]])
-    ranks = np.concatenate(ranks)
-    all_first, other_first, second_after_space = np.array(all_first), np.array(other_first), np.array(second_after_space)
-    ent = np.concatenate(entropies)
+    return {
+        "ranks": np.concatenate(ranks), "all_first": np.array(all_first), "other_first": np.array(other_first),
+        "second_after_space": np.array(second_after_space), "next_piece": next_piece, "k": k_stored,
+        "beyond": {kk: np.concatenate(v).mean() for kk, v in sorted(beyond.items())},
+        "beyond_k_all": np.concatenate(beyond_k_all).mean(), "beyond_k_first": np.array(beyond_k_first),
+        "entropy": np.concatenate(entropies), "p_top1": np.concatenate(p_top1),
+    }
+
+
+def analyze_run(an: Analyzer, run_dir: Path) -> None:
+    d = collect(an, run_dir)
+    ranks, all_first, other_first, second_after_space = d["ranks"], d["all_first"], d["other_first"], d["second_after_space"]
+    ent, k_stored, next_piece, beyond_k_first, p1 = d["entropy"], d["k"], d["next_piece"], d["beyond_k_first"], d["p_top1"]
     print(f"\n{run_dir}: {len(ranks):,} positions, {len(all_first)} spans (byte fragments excluded), k = {k_stored}")
-    print("  mean mass beyond top-k:      " + "  ".join(f"k={kk}: {np.concatenate(v).mean():.4f}" for kk, v in sorted(beyond.items())))
-    print(f"  mass beyond top-{k_stored}: all positions {np.concatenate(beyond_k_all).mean():.4f}, at span-first positions {np.mean(beyond_k_first) if len(beyond_k_first) else float('nan'):.4f}")
+    print("  mean mass beyond top-k:      " + "  ".join(f"k={kk}: {v:.4f}" for kk, v in d["beyond"].items()))
+    print(f"  mass beyond top-{k_stored}: all positions {d['beyond_k_all']:.4f}, at span-first positions {np.mean(beyond_k_first) if len(beyond_k_first) else float('nan'):.4f}")
     print(f"  entropy (top-{k_stored}, nats): mean {ent.mean():.4f}, p90 {np.percentile(ent, 90):.4f}, frac > 1: {100 * (ent > 1).mean():.2f}%")
-    p1 = np.concatenate(p_top1)
     print(f"  p(top-1): mean {p1.mean():.4f}, frac < 0.5: {100 * (p1 < 0.5).mean():.2f}%, frac < 0.9: {100 * (p1 < 0.9).mean():.2f}%")
     print(f"  all sampled tokens at rank 1 / 2-3 / 4-10 / >10:            " + band_shares(ranks))
     print(f"  all spans, first-token rank at 1 / 2-3 / 4-10 / >10:        " + band_shares(all_first))
