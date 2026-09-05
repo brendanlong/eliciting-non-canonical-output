@@ -117,7 +117,7 @@ The obvious alternative explanation is that non-canonical tokens are tail sample
 
 ![Figure 3](figures/fig3_span_rank.png)
 
-**Figure 3.** Share of non-canonical spans by the rank of the span's first token (left) and of the token that breaks canonicity (right) in the model's next-token distribution.
+**Figure 3.** Share of non-canonical spans by the rank, in the model's next-token distribution, of the token that breaks canonicity.
 
 The examples in `RESULTS.md` show what the two kinds look like. A tail sample is Think-DPO emitting ` `+`^` at p = 0.001 where `20` had 0.43. An argmax habit is Think RL final emitting `_g`+`b` at p = 1.000 three times in one rollout, or RL-Zero emitting `3`+`5` for `35` at p = 1.000: the prefix token committed the model and the breaking token was forced. This is the pattern I pre-registered for the two mechanisms (argmax spans should rise with on-policy RL, tail spans should track DPO), and the first-token ranks I looked at first did not show it.
 
