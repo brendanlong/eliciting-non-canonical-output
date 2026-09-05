@@ -137,11 +137,27 @@ def flag_pct_excluding(run: str, text: str, L: int | None = None) -> tuple[float
     return 100 * k / n, 100 * lo, 100 * hi, k, n
 
 
+DEPTH_BANDS = [(0, 1024), (1024, 4096), (4096, 8192), (8192, 10**9)]
+
+
+def events_per_million_by_depth(run: str, text: str) -> list[tuple[float, int]]:
+    """(events per million tokens, event count) in each depth band, counting events whose emitted text is not ``text``."""
+    lengths = [r["n_tokens"] for r in rows(run, "untruncated")]
+    events = [json.loads(l) for l in (Path("out") / run / D / "metrics" / "examples.jsonl").open()]
+    events = [e for e in events if e["file"].startswith("untruncated") and "".join(e["emitted"]) != text]
+    out = []
+    for lo, hi in DEPTH_BANDS:
+        n_ev = sum(lo <= e["pos"] < hi for e in events)
+        toks = sum(min(max(l - lo, 0), hi - lo) for l in lengths)
+        out.append((1e6 * n_ev / max(toks, 1), n_ev))
+    return out
+
+
 def fig2() -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(9.5, 3.6), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(13.5, 3.6), gridspec_kw={"width_ratios": [1, 1, 1.05]})
     DATA["fig2"] = {}
     habit_label = HABIT.replace(" ", "·").replace("$", r"\$")  # matplotlib reads bare $ as mathtext
-    for ax, exclude in zip(axes, (False, True)):
+    for ax, exclude in zip(axes[:2], (False, True)):
         for L, color, label, marker in [(None, BLUE, "whole rollout", "o"), (1024, ORANGE, "within the first 1,024 tokens", "s")]:
             xs, ps, los, his = [], [], [], []
             for step, run in zero_steps():
@@ -156,7 +172,23 @@ def fig2() -> None:
         ax.set_xlim(0, 2300)
         ax.legend(loc="upper left")
     axes[0].set_ylabel("rollouts with ≥1 non-canonical event (%)")
-    axes[0].set_ylim(0, 70)
+    for ax in axes[:2]:
+        ax.set_ylim(0, 70)
+    ax = axes[2]
+    steps = zero_steps()
+    per_step = {step: events_per_million_by_depth(run, HABIT) for step, run in steps}
+    band_labels = [f"{lo:,}–{hi:,}" if hi < 10**9 else f"{lo:,}+" for lo, hi in DEPTH_BANDS]
+    for b, (label, color) in enumerate(zip(band_labels, ORDINAL)):
+        ys = [per_step[step][b][0] for step, _ in steps]
+        ax.plot([st for st, _ in steps], ys, color=color, lw=2, marker="o", ms=6, mec=SURFACE, mew=1.5, label=f"tokens {label}", zorder=3)
+        for step, _ in steps:
+            DATA["fig2"][f"step {step} | depth {label} | excluding habit"] = {"per_million": per_step[step][b][0], "events": per_step[step][b][1]}
+    ax.set_title(f"excluding the {habit_label} span, by depth in the rollout")
+    ax.set_xlabel("RL step")
+    ax.set_xlim(0, 2300)
+    ax.set_ylabel("non-canonical events per million tokens")
+    ax.set_ylim(0, 230)
+    ax.legend(loc="upper left", ncol=2)
     fig.suptitle("Olmo-3-7B-RL-Zero-Math over training (RL from the base model; DAPO held-out, temperature 1)", fontsize=10, color=INK, y=1.02)
     save(fig, "fig2_rlzero_steps.png")
 
@@ -202,11 +234,11 @@ def fig3() -> None:
 
 # --- 4. what a span does downstream ------------------------------------------------------
 def fig4() -> None:
-    fig, axes = plt.subplots(2, 3, figsize=(11, 6.0), sharex=True)
+    fig, axes = plt.subplots(1, 3, figsize=(11, 3.4), sharey=True)
     DATA["fig4"] = {}
     bin_labels = [f"{lo}" if lo == hi else (f"{lo}–{hi}" if hi < 10**9 else f"{lo}+") for lo, hi in DISTANCE_BINS]
     for col, (family, stages) in enumerate(OLMO.items()):
-        top, bot = axes[0, col], axes[1, col]
+        top = axes[col]
         for i, (stage, run, _) in enumerate(stages):
             c = load_table(Path("out/divergence") / run, "untruncated")
             m = c["kind"] == "span"
@@ -218,21 +250,16 @@ def fig4() -> None:
                 med_kl.append(float(np.median(c["kl_ab"][y])) if y.any() else float("nan"))
             n_spans = len(set(zip(c["prompt_id"][m], c["sample"][m], c["span_pos"][m])))
             top.plot(range(len(DISTANCE_BINS)), differs, color=color, lw=2, marker="o", ms=6, mec=SURFACE, mew=1.5, label=f"{stage} ({n_spans} spans)", zorder=3)
-            bot.plot(range(len(DISTANCE_BINS)), np.maximum(med_kl, 1e-5), color=color, lw=2, marker="o", ms=6, mec=SURFACE, mew=1.5, label=stage, zorder=3)
             DATA["fig4"][f"{family} | {stage}"] = {"spans": n_spans, "top1_differs_pct_by_bin": dict(zip(bin_labels, differs)), "median_kl_by_bin": dict(zip(bin_labels, med_kl))}
         top.set_title(family)
         top.set_yscale("log")
         top.set_ylim(0.2, 60)
         top.set_yticks([0.3, 1, 3, 10, 30], ["0.3", "1", "3", "10", "30"])
         top.legend(loc="upper right")
-        bot.set_yscale("log")
-        bot.set_ylim(1e-5, 1)
-        bot.set_yticks([1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1], ["≤0.00001", "0.0001", "0.001", "0.01", "0.1", "1"])
-        bot.set_xticks(range(len(DISTANCE_BINS)), bin_labels)
-        bot.set_xlabel("tokens after the span")
-    axes[0, 0].set_ylabel("next-token argmax differs,\nemitted vs canonical prefix (%)")
-    axes[1, 0].set_ylabel("median KL(emitted ‖ canonical)\nof the next-token distribution (nats)")
-    fig.suptitle("What a non-canonical span does to the next-token distribution after it (teacher-forced, same text, emitted vs re-tokenized ids)", fontsize=10, color=INK, y=1.0)
+        top.set_xticks(range(len(DISTANCE_BINS)), bin_labels)
+        top.set_xlabel("tokens after the span")
+    axes[0].set_ylabel("next-token argmax differs,\nemitted vs canonical prefix (%)")
+    fig.suptitle("How often the next-token argmax differs after a non-canonical span (teacher-forced, same text, emitted vs re-tokenized ids)", fontsize=10, color=INK, y=1.02)
     fig.tight_layout()
     save(fig, "fig4_divergence.png")
 

@@ -421,6 +421,102 @@
    "hi": 6.1094158044292906,
    "k": 20,
    "n": 499
+  },
+  "step 300 | depth 0\u20131,024 | excluding habit": {
+   "per_million": 29.46497498423624,
+   "events": 15
+  },
+  "step 600 | depth 0\u20131,024 | excluding habit": {
+   "per_million": 33.28405987215005,
+   "events": 17
+  },
+  "step 1000 | depth 0\u20131,024 | excluding habit": {
+   "per_million": 48.88006006381781,
+   "events": 25
+  },
+  "step 1400 | depth 0\u20131,024 | excluding habit": {
+   "per_million": 19.537317252818745,
+   "events": 10
+  },
+  "step 1800 | depth 0\u20131,024 | excluding habit": {
+   "per_million": 41.015625,
+   "events": 21
+  },
+  "step 2000 | depth 0\u20131,024 | excluding habit": {
+   "per_million": 44.96429248685772,
+   "events": 23
+  },
+  "step 300 | depth 1,024\u20134,096 | excluding habit": {
+   "per_million": 30.82297338949964,
+   "events": 39
+  },
+  "step 600 | depth 1,024\u20134,096 | excluding habit": {
+   "per_million": 18.191064707198993,
+   "events": 23
+  },
+  "step 1000 | depth 1,024\u20134,096 | excluding habit": {
+   "per_million": 26.736478582966637,
+   "events": 36
+  },
+  "step 1400 | depth 1,024\u20134,096 | excluding habit": {
+   "per_million": 67.56660644941039,
+   "events": 95
+  },
+  "step 1800 | depth 1,024\u20134,096 | excluding habit": {
+   "per_million": 42.28124213833154,
+   "events": 60
+  },
+  "step 2000 | depth 1,024\u20134,096 | excluding habit": {
+   "per_million": 94.72563396733034,
+   "events": 133
+  },
+  "step 300 | depth 4,096\u20138,192 | excluding habit": {
+   "per_million": 31.07702200850793,
+   "events": 26
+  },
+  "step 600 | depth 4,096\u20138,192 | excluding habit": {
+   "per_million": 59.577180748229814,
+   "events": 40
+  },
+  "step 1000 | depth 4,096\u20138,192 | excluding habit": {
+   "per_million": 25.06262523480547,
+   "events": 20
+  },
+  "step 1400 | depth 4,096\u20138,192 | excluding habit": {
+   "per_million": 53.515752245334824,
+   "events": 46
+  },
+  "step 1800 | depth 4,096\u20138,192 | excluding habit": {
+   "per_million": 123.26899808633857,
+   "events": 103
+  },
+  "step 2000 | depth 4,096\u20138,192 | excluding habit": {
+   "per_million": 126.10880572581566,
+   "events": 106
+  },
+  "step 300 | depth 8,192+ | excluding habit": {
+   "per_million": 152.81282206190696,
+   "events": 86
+  },
+  "step 600 | depth 8,192+ | excluding habit": {
+   "per_million": 120.1679346887275,
+   "events": 32
+  },
+  "step 1000 | depth 8,192+ | excluding habit": {
+   "per_million": 102.02043881812578,
+   "events": 47
+  },
+  "step 1400 | depth 8,192+ | excluding habit": {
+   "per_million": 81.96283163765301,
+   "events": 23
+  },
+  "step 1800 | depth 8,192+ | excluding habit": {
+   "per_million": 208.12442056269276,
+   "events": 55
+  },
+  "step 2000 | depth 8,192+ | excluding habit": {
+   "per_million": 188.53545130341726,
+   "events": 71
   }
  },
  "fig4": {
