@@ -389,6 +389,73 @@ def summarize_contagion(dirs: list[str], arm: str) -> None:
             print(f"| {label} | {name} | {mask.sum()} | {len(medians)} | {int(np.median(cols['gap'][mask]))} | {dm.mean():+.3f} | {np.median(dm):+.3f} | {pos}/{len(medians)} | {sign_p:.2g} | {wil_p:.2g} | {delta_c[mask].mean():+.3f} | {int(np.median(cols['rank_a'][mask]))} / {int(np.median(cols['rank_b'][mask]))} |")
 
 
+# --- examples: what the flipped predictions look like ---------------------------------------
+def run_examples(run_dir: Path, arm: str, model_name: str, revision: str, out_dir: Path, n: int, seed: int, k: int = 3) -> None:
+    """For a random sample of spans whose next-token argmax differs at the span end, record the span,
+    its context, and the top-k predictions with probabilities under the emitted (A) and re-tokenized
+    (B) contexts, plus the token the model actually emitted next. Written to ``<arm>.examples.jsonl``."""
+    an = Analyzer(model_name, revision)
+    t = pq.read_table(out_dir / f"{arm}.parquet").to_pylist()
+    flipped = sorted({(r["prompt_id"], r["sample"], r["span_pos"]) for r in t if r["kind"] == "span" and r["distance_tokens"] == 0 and not r["top1_agree"]})
+    rng = random.Random(seed)
+    rng.shuffle(flipped)
+    records = {(r["prompt_id"], r["sample"]): r for r in iter_records(run_dir / f"{arm}.parquet")}
+    spans = {}
+    for line in (run_dir / "metrics" / "examples.jsonl").open():
+        e = json.loads(line)
+        if e["file"].startswith(arm):
+            spans[(e["prompt_id"], e["sample"], e["pos"])] = e
+    m = Model(model_name, revision)
+    torch = m.torch
+    out = []
+    for key in flipped:
+        if len(out) >= n:
+            break
+        e = spans.get(key)
+        if e is None or e["canonical"] is None:
+            continue
+        rec = records[key[:2]]
+        ids = list(rec["token_ids"])
+        pos, span_len = e["pos"], len(e["emitted"])
+        pair = build_pair(an, list(rec["prompt_token_ids"]), ids, pos, span_len, after=1)
+        if pair is None:
+            continue
+        # the sequences up to and including the span (A: emitted span; B: canonical span, which may differ in length)
+        seq_a = pair["a"][: pair["offset"] + span_len]
+        seq_b = pair["b"][: len(pair["b"]) - (len(pair["a"]) - pair["offset"] - span_len)]
+        preds = {}
+        for name, seq in (("a", seq_a), ("b", seq_b)):
+            with torch.no_grad():
+                logp = torch.log_softmax(m.model.lm_head(m.hidden(seq)[-1][0, -1]).float(), -1)
+            top = torch.topk(logp, k)
+            preds[name] = [(an.piece(int(i)), float(pr.exp())) for pr, i in zip(top.values, top.indices)]
+        next_id = ids[pos + span_len] if pos + span_len < len(ids) else None
+        out.append({
+            "prompt_id": key[0], "sample": key[1], "pos": pos, "shape": e["shape"],
+            "context": an.tok.decode(ids[max(0, pos - 24): pos], skip_special_tokens=False),
+            "emitted": e["emitted"], "canonical": e["canonical"], "next_emitted": an.piece(next_id) if next_id is not None else None,
+            "top_a": preds["a"], "top_b": preds["b"],
+        })
+    with (out_dir / f"{arm}.examples.jsonl").open("w") as f:
+        for row in out:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    print(json.dumps({"flipped_spans": len(flipped), "examples": len(out)}))
+
+
+def summarize_examples(dirs: list[str], arm: str) -> None:
+    """Render the recorded flipped-argmax examples as a table (no model needed)."""
+    show = lambda t: "`" + t.replace("|", "\\|").replace("\n", "⏎").replace("`", "'") + "`"
+    print("| cell | context (…before the span) | span: emitted → canonical | next token actually emitted | top-3 after the emitted span (p) | top-3 after the canonical span (p) |")
+    print("|---|---|---|---|---|---|")
+    for spec in dirs:
+        label, _, d = spec.rpartition("=")
+        d = Path(d); label = label or d.name
+        for line in (d / f"{arm}.examples.jsonl").open():
+            r = json.loads(line)
+            fmt = lambda tops: ", ".join(f"{show(t)} {p:.2f}" for t, p in tops)
+            print(f"| {label} | …{show(r['context'][-60:])} | {'+'.join(show(x) for x in r['emitted'])} → {'+'.join(show(x) for x in r['canonical'])} | {show(r['next_emitted']) if r['next_emitted'] is not None else '—'} | {fmt(r['top_a'])} | {fmt(r['top_b'])} |")
+
+
 def fetch(run: str, prompt_set: str, repo: str) -> None:
     from huggingface_hub import snapshot_download
 
@@ -403,7 +470,10 @@ def main() -> None:
     r.add_argument("run_dir", type=Path); r.add_argument("--model", required=True); r.add_argument("--revision", default="main"); r.add_argument("--arm", default="untruncated")
     r.add_argument("--out-dir", type=Path, default=None); r.add_argument("--after", type=int, default=512)
     r.add_argument("--max-spans", type=int, default=400); r.add_argument("--per-rollout", type=int, default=3); r.add_argument("--seed", type=int, default=0)
-    s = sub.add_parser("summarize"); s.add_argument("dirs", nargs="+", help="[label=]out/divergence/<run>"); s.add_argument("--arm", default="untruncated"); s.add_argument("--lens", action="store_true"); s.add_argument("--contagion", action="store_true")
+    s = sub.add_parser("summarize"); s.add_argument("dirs", nargs="+", help="[label=]out/divergence/<run>"); s.add_argument("--arm", default="untruncated"); s.add_argument("--lens", action="store_true"); s.add_argument("--contagion", action="store_true"); s.add_argument("--examples", action="store_true")
+    x = sub.add_parser("examples", help="record top-k predictions under both contexts for a random sample of argmax-flipping spans")
+    x.add_argument("run_dir", type=Path); x.add_argument("--model", required=True); x.add_argument("--revision", default="main"); x.add_argument("--arm", default="untruncated")
+    x.add_argument("--out-dir", type=Path, default=None); x.add_argument("-n", type=int, default=12); x.add_argument("--seed", type=int, default=0)
     c = sub.add_parser("contagion", help="second-span probability under the emitted vs re-tokenized first span")
     c.add_argument("run_dir", type=Path); c.add_argument("--model", required=True); c.add_argument("--revision", default="main"); c.add_argument("--arm", default="untruncated")
     c.add_argument("--out-dir", type=Path, default=None); c.add_argument("--max-gap", type=int, default=4096)
@@ -414,11 +484,14 @@ def main() -> None:
     elif args.cmd == "run":
         out_dir = args.out_dir or Path("out/divergence") / args.run_dir.parent.name
         run_cell(args.run_dir, args.arm, args.model, args.revision, out_dir, args.after, args.max_spans, args.per_rollout, args.seed)
+    elif args.cmd == "examples":
+        out_dir = args.out_dir or Path("out/divergence") / args.run_dir.parent.name
+        run_examples(args.run_dir, args.arm, args.model, args.revision, out_dir, args.n, args.seed)
     elif args.cmd == "contagion":
         out_dir = args.out_dir or Path("out/divergence") / args.run_dir.parent.name
         run_contagion(args.run_dir, args.arm, args.model, args.revision, out_dir, args.max_gap, args.max_pairs, args.seed)
     else:
-        (summarize_contagion if args.contagion else summarize_lens if args.lens else summarize)(args.dirs, args.arm)
+        (summarize_examples if args.examples else summarize_contagion if args.contagion else summarize_lens if args.lens else summarize)(args.dirs, args.arm)
 
 
 if __name__ == "__main__":
