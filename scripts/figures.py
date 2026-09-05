@@ -339,6 +339,8 @@ def fig7() -> None:
                 DATA["fig7"][f"{family} | {stage} | {bucket}"] = {"pct": pct, "lo": lo, "hi": hi, "k": k, "n": n, "mean_tokens": mean_len}
                 if n >= 10:
                     pts.append((i, pct, lo, hi, n))
+                else:  # too few rollouts for a bar: say so where the bar would be, so the gap does not read as zero
+                    ax.text(i + (j - 0.5) * 0.36, 1.5, f"{bucket}\n{k}/{n}\n(n<10)", ha="center", va="bottom", fontsize=6, color=MUTED, linespacing=0.9)
             if not pts:
                 continue
             x = np.array([i for i, *_ in pts]) + (j - 0.5) * 0.36
