@@ -12,7 +12,7 @@ def write_cell(tmp_path, name, arm, flags, correct, tokens=2000, temperature=1.0
     (d / "metrics").mkdir(parents=True)
     with (d / "metrics" / "analysis.jsonl").open("w") as f:
         for i, (flagged, ok) in enumerate(zip(flags, correct)):
-            f.write(json.dumps({"file": f"{arm}.parquet", "finish_reason": "stop", "correct": ok, "n_tokens": tokens, "n_units": tokens,
+            f.write(json.dumps({"file": f"{arm}.parquet", "prompt_id": f"r{i}", "sample": 0, "finish_reason": "stop", "correct": ok, "n_tokens": tokens, "n_units": tokens,
                                 "nc_events": int(flagged), "event_positions": [100] if flagged else []}) + "\n")
     (d / f"{arm}.meta.json").write_text(json.dumps({"sampling": {"temperature": temperature, "top_p": 1.0}}))
     return d
@@ -89,7 +89,7 @@ def test_top_spans_table_counts_spans_and_rollouts(tmp_path, capsys):
 
     d = write_cell(tmp_path, "z", "untruncated", [1, 1, 0], [True] * 3)
     with (d / "metrics" / "examples.jsonl").open("w") as f:
-        for pid, pieces in (("p", ["a", "b"]), ("p", ["a", "b"]), ("q", ["a", "b"]), ("q", ["c"])):
+        for pid, pieces in (("r0", ["a", "b"]), ("r0", ["a", "b"]), ("r1", ["a", "b"]), ("r1", ["c"])):
             f.write(json.dumps({"file": "untruncated.parquet", "prompt_id": pid, "sample": 0, "pos": 1, "emitted": pieces, "canonical": ["".join(pieces)] if pieces != ["c"] else None}) + "\n")
     compare.print_top_spans([f"Z={d}"], "untruncated", 3, "all")
     row = capsys.readouterr().out.splitlines()[-1]
