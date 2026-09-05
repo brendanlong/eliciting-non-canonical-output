@@ -201,42 +201,47 @@ def fig2() -> None:
     save(fig, "fig2_rlzero_steps.png")
 
 
-# --- 3. rank of the first token of each span -----------------------------------------
+# --- 3. rank of the span's first token and of the token that breaks canonicity ---------------
 def fig3() -> None:
     from noncanon.metrics import Analyzer
-    from noncanon.tail import BANDS, collect
+    from noncanon.tail import BANDS, deviation_ranks
 
     an = Analyzer("allenai/Olmo-3-7B-Think")
     cells = [("Think-SFT", "think-sft"), ("Think-DPO", "think-dpo"), ("Think RL final", "think-main"),
+             ("Instruct-SFT", "instruct-sft"), ("Instruct-DPO", "instruct-dpo"), ("Instruct RL final", "instruct-main"),
              ("RL-Zero step 300", "rlzero-math-step300"), ("RL-Zero step 2000", "rlzero-math")]
-    labels, shares, ns = [], [], []
+    labels, first_shares, dev_shares, ns = [], [], [], []
     DATA["fig3"] = {}
     for label, run in cells:
-        d = collect(an, Path("out") / run / D)
-        for name, arr in [(label, d["all_first"])] + ([(label + ", bare-space spans excluded", d["other_first"])] if label == "Think-DPO" else []):
-            sh = [100 * ((arr >= lo) & (arr <= hi)).mean() for lo, hi in BANDS]
-            labels.append(name); shares.append(sh); ns.append(len(arr))
-            DATA["fig3"][name] = {"spans": len(arr), "share_rank_1_2-3_4-10_gt10": sh, "sampled_tokens_rank_1": 100 * (d["ranks"] == 1).mean()}
-    fig, ax = plt.subplots(figsize=(7.5, 3.2))
-    ax.grid(False)
+        first, dev, where = deviation_ranks(an, Path("out") / run / D, "untruncated")
+        f_sh = [100 * ((first >= lo) & (first <= hi)).mean() for lo, hi in BANDS]
+        d_sh = [100 * ((dev >= lo) & (dev <= hi)).mean() for lo, hi in BANDS]
+        labels.append(label); first_shares.append(f_sh); dev_shares.append(d_sh); ns.append(len(first))
+        DATA["fig3"][label] = {"spans": len(first), "first_token_rank_1_2-3_4-10_gt10": f_sh, "deviating_token_rank_1_2-3_4-10_gt10": d_sh,
+                              "deviation_at_token": {k: where[k] for k in ("1", "2", "later")}}
+    fig, axes = plt.subplots(1, 2, figsize=(11, 3.6), sharey=True, gridspec_kw={"width_ratios": [1.25, 1]})
     y = np.arange(len(labels))[::-1]
-    left = np.zeros(len(labels))
     band_names = ["rank 1 (the argmax)", "rank 2–3", "rank 4–10", "beyond the top 10"]
-    for b, (name, color) in enumerate(zip(band_names, ORDINAL)):
-        vals = np.array([s[b] for s in shares])
-        ax.barh(y, vals, left=left, color=color, height=0.62, label=name, edgecolor=SURFACE, linewidth=1.5, zorder=2)
-        for yi, l, v in zip(y, left, vals):
-            if b in (0, 3) and v >= 6:
-                ax.text(l + v / 2, yi, f"{v:.0f}%", ha="center", va="center", fontsize=7.5, color=SURFACE if b == 3 else INK)
-        left += vals
+    for ax, shares, title in zip(axes, (first_shares, dev_shares), ("first token of the span", "the token that breaks canonicity")):
+        ax.grid(False)
+        left = np.zeros(len(labels))
+        for b, (name, color) in enumerate(zip(band_names, ORDINAL)):
+            vals = np.array([s[b] for s in shares])
+            ax.barh(y, vals, left=left, color=color, height=0.62, label=name, edgecolor=SURFACE, linewidth=1.5, zorder=2)
+            for yi, l, v in zip(y, left, vals):
+                if b in (0, 3) and v >= 7:
+                    ax.text(l + v / 2, yi, f"{v:.0f}%", ha="center", va="center", fontsize=7.5, color=SURFACE if b == 3 else INK)
+            left += vals
+        ax.set_xlim(0, 100)
+        ax.set_xticks([0, 25, 50, 75, 100])
+        ax.set_title(title)
+        ax.set_xlabel("share of spans by the token's rank in the next-token distribution (%)")
     for yi, n in zip(y, ns):
-        ax.text(101, yi, f"n = {n}", va="center", fontsize=7.5, color=INK2)
-    ax.set_yticks(y, labels)
-    ax.set_xlim(0, 112)
-    ax.set_xticks([0, 25, 50, 75, 100])
-    ax.set_xlabel("share of non-canonical spans by the rank of their first emitted token (%)")
-    ax.legend(loc="lower center", bbox_to_anchor=(0.45, 1.0), ncol=4)
-    ax.set_title("Where spans start in the next-token distribution (DAPO held-out, temperature 1)", pad=28)
+        axes[1].text(101, yi, f"n = {n}", va="center", fontsize=7.5, color=INK2)
+    axes[0].set_yticks(y, labels)
+    handles, names = axes[0].get_legend_handles_labels()
+    fig.legend(handles, names, loc="lower center", bbox_to_anchor=(0.5, 0.96), ncol=4)
+    fig.suptitle("Where spans start in the next-token distribution (DAPO held-out, temperature 1)", fontsize=10, color=INK, y=1.08)
     save(fig, "fig3_span_rank.png")
 
 

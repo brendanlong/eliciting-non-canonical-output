@@ -116,33 +116,42 @@ def deviation_index(an: Analyzer, span_ids: list[int]) -> int:
     return len(span_ids) - 1
 
 
-def print_deviation_table(an: Analyzer, specs: list[str], default_arm: str | None) -> None:
-    """Per cell: rank bands of the span's first token and of its deviating token, and where the deviation sits."""
+def deviation_ranks(an: Analyzer, run: Path, arm: str | None) -> tuple[np.ndarray, np.ndarray, Counter]:
+    """Per span of one cell: rank of the first token, rank of the deviating token (11 = beyond the stored top-10),
+    and a count of where the deviation sits ("1", "2", "later")."""
     import json
 
-    from noncanon.compare import load_rows, parse_spec
+    from noncanon.compare import load_rows
+
+    arm_name = load_rows(run, arm)[0]["file"].removesuffix(".parquet")
+    recs = {(r["prompt_id"], r["sample"]): r for r in iter_records(run / f"{arm_name}.parquet")}
+    first, dev, where = [], [], Counter()
+    for line in (run / "metrics" / "examples.jsonl").open():
+        e = json.loads(line)
+        if not e["file"].startswith(arm_name) or e["canonical"] is None:
+            continue
+        rec = recs[(e["prompt_id"], e["sample"])]
+        ids, pos, L = rec["token_ids"], e["pos"], len(e["emitted"])
+        k = deviation_index(an, ids[pos: pos + L])
+        if pos + k >= len(rec["topk_ids"]):
+            continue
+        rank = lambda i: rec["topk_ids"][i].index(ids[i]) + 1 if ids[i] in rec["topk_ids"][i][:10] else 11
+        first.append(rank(pos)); dev.append(rank(pos + k)); where["1" if k == 0 else "2" if k == 1 else "later"] += 1
+    return np.array(first), np.array(dev), where
+
+
+def print_deviation_table(an: Analyzer, specs: list[str], default_arm: str | None) -> None:
+    """Per cell: rank bands of the span's first token and of its deviating token, and where the deviation sits."""
+    from noncanon.compare import parse_spec
 
     print("| cell | spans | first-token rank: 1 / 2–3 / 4–10 / beyond top-10 | deviating-token rank: 1 / 2–3 / 4–10 / beyond top-10 | deviation at token 1 / 2 / later |")
     print("|---|--:|---|---|---|")
     for spec in specs:
         label, run, arm = parse_spec(spec, default_arm)
-        arm_name = load_rows(run, arm)[0]["file"].removesuffix(".parquet")
-        recs = {(r["prompt_id"], r["sample"]): r for r in iter_records(run / f"{arm_name}.parquet")}
-        first, dev, where = [], [], Counter()
-        for line in (run / "metrics" / "examples.jsonl").open():
-            e = json.loads(line)
-            if not e["file"].startswith(arm_name) or e["canonical"] is None:
-                continue
-            rec = recs[(e["prompt_id"], e["sample"])]
-            ids, pos, L = rec["token_ids"], e["pos"], len(e["emitted"])
-            k = deviation_index(an, ids[pos: pos + L])
-            if pos + k >= len(rec["topk_ids"]):
-                continue
-            rank = lambda i: rec["topk_ids"][i].index(ids[i]) + 1 if ids[i] in rec["topk_ids"][i][:10] else 11
-            first.append(rank(pos)); dev.append(rank(pos + k)); where["1" if k == 0 else "2" if k == 1 else "later"] += 1
+        first, dev, where = deviation_ranks(an, run, arm)
         n = len(first)
         pct = lambda c: f"{100 * c / n:.0f}%" if n else "n/a"
-        print(f"| {label} | {n} | {band_shares(np.array(first))} | {band_shares(np.array(dev))} | {pct(where['1'])} / {pct(where['2'])} / {pct(where['later'])} |")
+        print(f"| {label} | {n} | {band_shares(first)} | {band_shares(dev)} | {pct(where['1'])} / {pct(where['2'])} / {pct(where['later'])} |")
 
 
 def print_deviation_examples(an: Analyzer, specs: list[str], default_arm: str | None, n: int, seed: int) -> None:
