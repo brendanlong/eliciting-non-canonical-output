@@ -104,7 +104,7 @@ at least one non-canonical event, 500 rollouts per cell):
   Think-DPO events of different text still sit closer than random
   placement (p < 0.0005).
 - A span changes the next-token distribution where it happens (argmax
-  differs for 15–36% of spans in the OLMo-3 cells) and the effect is gone
+  differs for 11–36% of spans in the OLMo-3 cells) and the effect is gone
   within about 16 tokens; so a re-tokenized transcript is wrong locally,
   not globally. First-build numbers; the full-prefix rerun is pending.
 
@@ -310,7 +310,8 @@ baseline.
   consecutive events repeat the same text) and RL-Zero step 2000 (41%)
   the clustering disappears (p = 0.33 and 0.58); in Think-DPO it stays
   (1,019 vs 1,725 tokens, p < 0.0005; its 18% repeats are almost all byte
-  fragments, 41 of 43) and in Tulu-3-SFT too (47 vs 111, p < 0.0005).
+  fragments, 41 of 43) and in Tulu-3-SFT too (48 vs 111, p < 0.0005; RESULTS.md's prose says
+  47 vs 111, its table 48 vs 111).
 - Reading for the writeup: for the on-policy RL checkpoints, "contagion"
   is a learned tokenization habit repeating (the ` $`+`($` span appears
   213 times in RL-Zero step 2000), not a destabilised rollout. For
@@ -325,7 +326,8 @@ baseline.
 
 Source: `noncanon.divergence` tables in the same section. **Status: the
 numbers on main are from the first build (commit ada2362), which
-truncated the prefix to the last 4,096 tokens and spliced it; a
+kept only the prompt plus the last 4,096 tokens before the span and
+required that window to re-encode canonically; a
 full-prefix rerun of all 12 cells is in progress.** Either wait for the
 rerun before writing this section or label the numbers as the first
 build. Do not mix the two.
@@ -363,8 +365,8 @@ First-build numbers:
 
 Reading for the writeup: this is the number the title question turns on.
 Running a probe or logit lens on a text transcript gives the wrong
-distribution at the span itself, in a quarter to a third of cases a
-different argmax, and is back in agreement within about 16 tokens. So
+distribution at the span itself, in a tenth to a third of cases a
+different argmax depending on the checkpoint, and is back in agreement within about 16 tokens. So
 the interpretability damage is local to the span, not a corrupted
 rollout. Pair that with the rate numbers: at recommended settings the
 shipped Think model has a span in 2% of ~9k-token rollouts, so per token
