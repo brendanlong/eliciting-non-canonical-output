@@ -37,6 +37,9 @@ noncanon/
   tests/         CPU tests on the real OLMo-3 tokenizer
 prompts/         generated prompt files and the DAPO filter report (committed)
 scripts/         recompute every cell's metrics; run every comparison; check_results.py verifies the generated tables in RESULTS.md
+                 figures.py renders figures/ from the metrics under out/ (numbers to figures/data.json);
+                 random_examples.py and flag_composition.py print the uniformly sampled spans and the flagged-fraction decomposition
+figures/         the rendered figures and their data
 skypilot/        RunPod task definitions
 ```
 
