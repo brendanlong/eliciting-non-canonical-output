@@ -241,8 +241,8 @@ def fig5(B: int = 2000, seed: int = 0) -> None:
     b.set_xticks(x, [c[0] for c in cells], rotation=30, ha="right")
     b.set_ylabel("median gap between consecutive events,\nobserved ÷ random placement")
     b.set_ylim(0, 1.3)
-    b.set_title("Are consecutive events closer than chance?", pad=26)
-    b.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2, title="filled marker: p < 0.05 over 2,000 shuffles", title_fontsize=8)
+    b.set_title("Are consecutive events closer than chance? (filled: p < 0.05)", pad=26)
+    b.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2)
     fig.suptitle("Does one event make the next more likely? (OLMo-3 cells, DAPO held-out, temperature 1)", fontsize=10, color=INK, y=1.12)
     save(fig, "fig5_clustering.png")
 
