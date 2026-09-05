@@ -217,6 +217,32 @@ def print_pairs(specs: list[str], arm: str | None, seed: int, default_outcome: s
         print(f"| {label} | " + " | ".join(out) + " |")
 
 
+def print_top_spans(specs: list[str], arm: str | None, n: int) -> None:
+    """The most common non-canonical spans of each cell: emitted pieces → canonical pieces, count, rollouts."""
+    import json
+    from collections import Counter
+
+    print("| cell | spans | rollouts with spans | most common spans: emitted → canonical (count, rollouts) |")
+    print("|---|--:|--:|---|")
+    for spec in specs:
+        label, run, cell_arm = parse_spec(spec, arm)
+        rows = load_rows(run, cell_arm)
+        arm_name = rows[0]["file"].removesuffix(".parquet")
+        counts, rollouts = Counter(), {}
+        total, flagged = 0, set()
+        for line in (run / "metrics" / "examples.jsonl").open():
+            e = json.loads(line)
+            if not e["file"].startswith(arm_name) or e["canonical"] is None:
+                continue
+            key = ("|".join(e["emitted"]), "|".join(e["canonical"]))
+            counts[key] += 1
+            rollouts.setdefault(key, set()).add((e["prompt_id"], e["sample"]))
+            total += 1
+            flagged.add((e["prompt_id"], e["sample"]))
+        top = "; ".join(f"`{em}` → `{ca}` ({c}, {len(rollouts[(em, ca)])})".replace("\n", "⏎") for (em, ca), c in counts.most_common(n))
+        print(f"| {label} | {total} | {len(flagged)} | {top} |")
+
+
 # --- CLI ----------------------------------------------------------------------------
 
 
@@ -227,6 +253,7 @@ def main() -> None:
     ap.add_argument("--outcome", default="all", choices=list(OUTCOMES), help="restrict to one outcome bucket")
     ap.add_argument("--table", action="store_true", help="print rollout-level numbers for every run given, no tests")
     ap.add_argument("--pairs", action="store_true", help="print the pairwise-test table for the pair specs given")
+    ap.add_argument("--top-spans", type=int, default=0, metavar="N", help="print the N most common spans of every run given")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if args.table:
@@ -234,6 +261,9 @@ def main() -> None:
         return
     if args.pairs:
         print_pairs(args.runs, args.arm, args.seed, args.outcome)
+        return
+    if args.top_spans:
+        print_top_spans(args.runs, args.arm, args.top_spans)
         return
     assert len(args.runs) == 2, "pass exactly two run directories (or --table / --pairs)"
     a, b = map(Path, args.runs)
